@@ -44,9 +44,10 @@ import { AuthService } from './services/auth.service';
 import { LoadermodelService } from './services/loadermodel.service';
 import { NgOtpInputModule } from 'ng-otp-input';
 import { ResetPasswordComponent } from './components/reset-password/reset-password.component';
-
+import { VoiceAssistantComponent } from './components/voice-assistant/voice-assistant.component';
 @NgModule({
   declarations: [
+    VoiceAssistantComponent ,
     AppComponent,
     LoginComponent,
     RegisterComponent,

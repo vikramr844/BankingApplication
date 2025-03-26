@@ -31,14 +31,6 @@ public class AccountController {
     private final AccountService accountService;
     private final TransactionService transactionService;
 
-//    @GetMapping("/pin/check")
-//    public ResponseEntity<String> checkAccountPIN() {
-//        val isPINValid = accountService.isPinCreated(LoggedinUser.getAccountNumber());
-//        val response = isPINValid ? ApiMessages.PIN_CREATED.getMessage()
-//                : ApiMessages.PIN_NOT_CREATED.getMessage();
-//
-//        return ResponseEntity.ok(response);
-//    }
 
     @GetMapping("/pin/check")
     public ResponseEntity<Map<String, Object>> checkAccountPIN() {
@@ -51,13 +43,12 @@ public class AccountController {
         return ResponseEntity.ok(response);
     }
 
-
     @PostMapping("/pin/create")
     public ResponseEntity<String> createPIN(@RequestBody PinRequest pinRequest) {
         accountService.createPin(
                 LoggedinUser.getAccountNumber(),
-                pinRequest.password(),
-                pinRequest.pin());
+                pinRequest.password().trim(),
+                pinRequest.pin().trim());
 
         return ResponseEntity.ok(ApiMessages.PIN_CREATION_SUCCESS.getMessage());
     }
@@ -66,9 +57,9 @@ public class AccountController {
     public ResponseEntity<String> updatePIN(@RequestBody PinUpdateRequest pinUpdateRequest) {
         accountService.updatePin(
                 LoggedinUser.getAccountNumber(),
-                pinUpdateRequest.oldPin(),
-                pinUpdateRequest.password(),
-                pinUpdateRequest.newPin());
+                pinUpdateRequest.oldPin().trim(),
+                pinUpdateRequest.password().trim(),
+                pinUpdateRequest.newPin().trim());
 
         return ResponseEntity.ok(ApiMessages.PIN_UPDATE_SUCCESS.getMessage());
     }
@@ -77,7 +68,7 @@ public class AccountController {
     public ResponseEntity<String> cashDeposit(@RequestBody AmountRequest amountRequest) {
         accountService.cashDeposit(
                 LoggedinUser.getAccountNumber(),
-                amountRequest.pin(),
+                amountRequest.pin().trim(),
                 amountRequest.amount());
 
         return ResponseEntity.ok(ApiMessages.CASH_DEPOSIT_SUCCESS.getMessage());
@@ -87,7 +78,7 @@ public class AccountController {
     public ResponseEntity<String> cashWithdrawal(@RequestBody AmountRequest amountRequest) {
         accountService.cashWithdrawal(
                 LoggedinUser.getAccountNumber(),
-                amountRequest.pin(),
+                amountRequest.pin().trim(),
                 amountRequest.amount());
 
         return ResponseEntity.ok(ApiMessages.CASH_WITHDRAWAL_SUCCESS.getMessage());

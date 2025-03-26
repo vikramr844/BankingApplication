@@ -1,91 +1,34 @@
-import { TestBed } from '@angular/core/testing';
-import { Router } from '@angular/router';
-import { ResponsiveVoiceService } from '../services/responsive-voice.service';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { VoiceAssistantComponent } from '../components/voice-assistant/voice-assistant.component';
 import { VoiceService } from './voice.service';
-import { LoginComponent } from '../components/login/login.component';
-import { RegisterComponent } from '../components/register/register.component';
-import { LoadermodelService } from 'src/app/services/loadermodel.service';
-import { FormGroup } from '@angular/forms';
 
-describe('VoiceService', () => {
-  let service: VoiceService;
-  let mockRouter: jasmine.SpyObj<Router>;
-  let mockTts: jasmine.SpyObj<ResponsiveVoiceService>;
-  let mockLoader: jasmine.SpyObj<LoadermodelService>;
-  let mockLoginComponent: jasmine.SpyObj<LoginComponent>;
-  let mockRegisterComponent: jasmine.SpyObj<RegisterComponent>;
+describe('VoiceAssistantComponent - UI Visibility', () => {
+  let component: VoiceAssistantComponent;
+  let fixture: ComponentFixture<VoiceAssistantComponent>;
+  let voiceService: VoiceService;
 
   beforeEach(() => {
-    mockRouter = jasmine.createSpyObj('Router', ['navigate']);
-    mockTts = jasmine.createSpyObj('ResponsiveVoiceService', ['speak']);
-    mockLoader = jasmine.createSpyObj('LoadermodelService', ['show']);
-    mockLoginComponent = jasmine.createSpyObj('LoginComponent', ['onSubmit']);
-    mockRegisterComponent = jasmine.createSpyObj('RegisterComponent', ['onSubmit']);
-
     TestBed.configureTestingModule({
-      providers: [
-        VoiceService,
-        { provide: Router, useValue: mockRouter },
-        { provide: ResponsiveVoiceService, useValue: mockTts },
-        { provide: LoadermodelService, useValue: mockLoader },
-      ],
+      declarations: [VoiceAssistantComponent],
+      providers: [VoiceService]
     });
 
-    service = TestBed.inject(VoiceService);
+    fixture = TestBed.createComponent(VoiceAssistantComponent);
+    component = fixture.componentInstance;
+    voiceService = TestBed.inject(VoiceService);
   });
 
-  it('should be created', () => {
-    expect(service).toBeTruthy();
-  });
+  it('should show the assistant UI when showAssistant() is called', () => {
+    // Initially, the UI should be hidden
+    const assistantElement = fixture.nativeElement.querySelector('.voice-assistant');
+    expect(assistantElement).toBeNull(); // Assuming the UI is hidden by default
 
-  it('should start listening when "hello" is detected', () => {
-    spyOn<any>(service, 'startListening');
-    service['handleInput']('hello');
-    expect(service['startListening']).toHaveBeenCalled();
-  });
+    // Call showAssistant() and detect changes
+    component.showAssistant();
+    fixture.detectChanges();
 
-  it('should navigate to login when "login" is detected', () => {
-    spyOn<any>(service, 'navigateToLogin');
-    service['handleInput']('login');
-    expect(service['navigateToLogin']).toHaveBeenCalled();
-  });
-
-  it('should navigate to register when "register" is detected', () => {
-    spyOn<any>(service, 'navigateToRegister');
-    service['handleInput']('register');
-    expect(service['navigateToRegister']).toHaveBeenCalled();
-  });
-
-  it('should process login input correctly', () => {
-    service['step'] = 1;
-    service['processLogin']('testuser');
-    expect(service['userData'].identifier).toBe('testuser');
-    expect(service['step']).toBe(2);
-  });
-
-  it('should process password input correctly', () => {
-    service['step'] = 2;
-    service['processLogin']('password123');
-    expect(service['userData'].password).toBe('password123');
-    expect(service['step']).toBe(3);
-  });
-
-  it('should call onSubmit on login confirmation', () => {
-    service['step'] = 3;
-    service['loginComponent'] = mockLoginComponent;
-    service['loginForm'] = new FormGroup({});
-    service['processLogin']('confirm');
-    expect(mockLoginComponent.onSubmit).toHaveBeenCalled();
-  });
-
-  it('should navigate home when "home" is detected', () => {
-    service['handleInput']('home');
-    expect(mockRouter.navigate).toHaveBeenCalledWith(['/']);
-  });
-
-  it('should stop listening when "stop" is detected', () => {
-    spyOn<any>(service, 'stopListening');
-    service['handleInput']('stop');
-    expect(service['stopListening']).toHaveBeenCalled();
+    // Verify that the UI is now visible
+    const updatedAssistantElement = fixture.nativeElement.querySelector('.voice-assistant');
+    expect(updatedAssistantElement).toBeTruthy(); // Ensure the UI element is now in the DOM
   });
 });

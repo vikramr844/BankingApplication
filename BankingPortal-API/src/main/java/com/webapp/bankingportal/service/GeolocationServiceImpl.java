@@ -69,7 +69,8 @@ public class GeolocationServiceImpl implements GeolocationService {
     private String getPublicIp() {
         try {
             RestTemplate restTemplate = new RestTemplate();
-            String url = "https://api64.ipify.org?format=json";
+           // String url = "https://api64.ipify.org?format=json";
+            String url ="https://ipinfo.io/json";
             val response = restTemplate.getForObject(url, java.util.Map.class);
             return response != null ? response.get("ip").toString() : "UNKNOWN";
         } catch (Exception e) {

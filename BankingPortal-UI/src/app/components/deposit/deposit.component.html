@@ -5,13 +5,13 @@
     <form [formGroup]="depositForm" (ngSubmit)="onSubmit()" class="space-y-4">
       <div>
         <label for="amount" class="block text-sm font-bold mb-2">Amount:</label>
-        <input autocomplete="off" formControlName="amount" type="number" id="amount"
+        <input autocomplete="off" formControlName="amount" type="number" id="amount" name="amount"
           class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-indigo-500"
           placeholder="Enter the amount" />
       </div>
       <div>
         <label for="pin" class="block text-sm font-bold mb-2">PIN:</label>
-        <input autocomplete="off" formControlName="pin" type="password" id="pin"
+        <input autocomplete="off" formControlName="pin" type="password" id="pin" maxlength="4" name="pin"
           class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-indigo-500"
           placeholder="Enter your account PIN" />
       </div>

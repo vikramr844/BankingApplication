@@ -26,8 +26,9 @@ export class HeaderComponent {
   }
 
   isLoggedIn(): boolean {
-    return this.isUserLoggedIn;
+    return this.authService.isLoggedIn(); // Fetch directly from the service
   }
+  
 
   @HostListener('window:resize', ['$event'])
   onResize() {

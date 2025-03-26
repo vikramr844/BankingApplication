@@ -5,6 +5,7 @@ import { ToastService } from 'angular-toastify';
 import { ApiService } from 'src/app/services/api.service';
 import { LoadermodelService } from 'src/app/services/loadermodel.service';
 import { passwordMismatch } from 'src/app/util/formutil';
+import { VoiceService } from 'src/app/services/voice.service'; // Import VoiceService
 
 @Component({
   selector: 'app-account-pin',
@@ -21,18 +22,34 @@ export class AccountPinComponent implements OnInit {
     private _toastService: ToastService,
     private router: Router,
     private loader: LoadermodelService,
-    private cdr: ChangeDetectorRef // Added for change detection
+    private cdr: ChangeDetectorRef, // Added for change detection
+    private voiceService: VoiceService // Inject VoiceService
   ) {}
 
   ngOnInit(): void {
     this.apiService.checkPinCreated().subscribe({
       next: (response: any) => {
         if (response && response.hasPIN) {
-          this.showGeneratePINForm = false; // Switch to "Change PIN" form
+          this.showGeneratePINForm = false;
         }
-        this.initPinChangeForm();
+        this.initPinChangeForm(); 
         this.loading = false;
-        this.cdr.detectChanges(); // Force update the UI
+        this.cdr.detectChanges();
+
+        this.voiceService.initializeVoiceCommands(
+          undefined, 
+          undefined, 
+          undefined, 
+          undefined, 
+          this.pinChangeForm, 
+          this, 
+          undefined, 
+          undefined,
+          undefined, 
+          undefined 
+        );
+
+        console.log('pinChangeForm passed to VoiceService:', this.pinChangeForm);
       },
       error: (error: any) => {
         this.loading = false;
@@ -51,7 +68,7 @@ export class AccountPinComponent implements OnInit {
             Validators.maxLength(4),
           ]),
           confirmPin: new FormControl('', Validators.required),
-          password: new FormControl('', Validators.required),
+          passwordGenerate: new FormControl('', Validators.required),
         },
         {
           validators: passwordMismatch('newPin', 'confirmPin'),
@@ -72,19 +89,30 @@ export class AccountPinComponent implements OnInit {
         password: new FormControl('', Validators.required),
       });
     }
+
+    console.log('pinChangeForm initialized:', this.pinChangeForm);
+  }
+
+  private getTrimmedFormValues(): { [key: string]: string } {
+    const trimmedValues: any = {};
+    Object.keys(this.pinChangeForm.controls).forEach((key) => {
+      let value = this.pinChangeForm.get(key)?.value;
+      trimmedValues[key] = value ? value.toString().trim().replace(/\s+/g, '') : '';
+    });
+    return trimmedValues;
   }
 
   onSubmitGeneratePIN(): void {
     if (this.pinChangeForm.valid) {
-      const newPin = this.pinChangeForm.get('newPin')?.value;
-      const password = this.pinChangeForm.get('password')?.value;
+      const { newPin, passwordGenerate } = this.getTrimmedFormValues();
 
       this.loader.show('Generating PIN...');
-      this.apiService.createPin(newPin, password).subscribe({
-        next: (response: any) => {
+      this.apiService.createPin(newPin, passwordGenerate).subscribe({
+        next: () => {
           this.loader.hide();
           this._toastService.success('PIN generated successfully');
-          this.showGeneratePINForm = false; // Switch to "Change PIN" form
+          this.voiceService.speak('PIN generated successfully')
+          this.showGeneratePINForm = false; 
           this.initPinChangeForm();
           this.cdr.detectChanges();
         },
@@ -98,15 +126,14 @@ export class AccountPinComponent implements OnInit {
 
   onSubmitChangePIN(): void {
     if (this.pinChangeForm.valid) {
-      const oldPin = this.pinChangeForm.get('oldPin')?.value;
-      const newPin = this.pinChangeForm.get('newPin')?.value;
-      const password = this.pinChangeForm.get('password')?.value;
+      const { oldPin, newPin, password } = this.getTrimmedFormValues();
 
       this.loader.show('Changing PIN...');
       this.apiService.updatePin(oldPin, newPin, password).subscribe({
-        next: (response: any) => {
+        next: () => {
           this.loader.hide();
           this._toastService.success('PIN changed successfully');
+          this.voiceService.speak('PIN changed successfully');
           this.router.navigate(['/dashboard']);
         },
         error: (error: any) => {

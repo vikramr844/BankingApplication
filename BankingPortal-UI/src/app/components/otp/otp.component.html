@@ -8,11 +8,10 @@
       </h2>
 
       <ng-container *ngIf="!otpGenerated; else verifyOtpSection">
-        <!-- OTP Generation Section -->
         <form
           class="mt-8 space-y-6"
           (ngSubmit)="generateOTP()"
-          #otpForm="ngForm"
+          [formGroup]="otpForm"
         >
           <div class="rounded-md shadow-sm -space-y-px">
             <div>
@@ -23,7 +22,7 @@
                 id="identifier"
                 name="identifier"
                 type="text"
-                [(ngModel)]="identifier"
+                formControlName="identifier"
                 required
                 class="appearance-none rounded-none relative block w-full px-3 py-2 border text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
                 placeholder="Email / Account Number"

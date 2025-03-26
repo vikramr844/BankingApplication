@@ -32,11 +32,10 @@ public class User {
 
     @NotEmpty
     private String address;
-
+    
     // Establishing a one-to-one relationship with the account
     @OneToOne(mappedBy = "user", cascade = CascadeType.ALL)
     private Account account;
-
 
     // Trimming inputs before storing
     public void setName(String name) {

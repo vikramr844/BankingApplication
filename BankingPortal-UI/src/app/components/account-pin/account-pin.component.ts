@@ -32,6 +32,7 @@ export class AccountPinComponent implements OnInit {
         if (response && response.hasPIN) {
           this.showGeneratePINForm = false;
         }
+
         this.initPinChangeForm(); 
         this.loading = false;
         this.cdr.detectChanges();
@@ -50,6 +51,27 @@ export class AccountPinComponent implements OnInit {
         );
 
         console.log('pinChangeForm passed to VoiceService:', this.pinChangeForm);
+
+        this.initPinChangeForm(); // Initialize the form
+        this.loading = false;
+        this.cdr.detectChanges(); // Force update the UI
+
+        // Pass the pinChangeForm to the VoiceService
+        this.voiceService.initializeVoiceCommands(
+          undefined, // loginForm
+          undefined, // loginComponent
+          undefined, // registerForm
+          undefined, // registerComponent
+          this.pinChangeForm, // pinChangeForm
+          this, // pinChangeComponent (current component)
+          undefined, // otpForm
+          undefined, // otpComponent
+          undefined, // resetPasswordForm
+          undefined // resetPasswordComponent
+        );
+
+        console.log('pinChangeForm passed to VoiceService:', this.pinChangeForm); // Log the form
+
       },
       error: (error: any) => {
         this.loading = false;
@@ -97,6 +119,9 @@ export class AccountPinComponent implements OnInit {
     const trimmedValues: any = {};
     Object.keys(this.pinChangeForm.controls).forEach((key) => {
       let value = this.pinChangeForm.get(key)?.value;
+
+      // Trim and remove all spaces from the input
+
       trimmedValues[key] = value ? value.toString().trim().replace(/\s+/g, '') : '';
     });
     return trimmedValues;
@@ -112,7 +137,11 @@ export class AccountPinComponent implements OnInit {
           this.loader.hide();
           this._toastService.success('PIN generated successfully');
           this.voiceService.speak('PIN generated successfully')
+
           this.showGeneratePINForm = false; 
+
+          this.showGeneratePINForm = false; // Switch to "Change PIN" form
+
           this.initPinChangeForm();
           this.cdr.detectChanges();
         },

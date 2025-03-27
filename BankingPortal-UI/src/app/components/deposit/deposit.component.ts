@@ -1,11 +1,10 @@
+import { Component, OnInit } from '@angular/core';
+import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { Router } from '@angular/router';
 import { ToastService } from 'angular-toastify';
 import { ApiService } from 'src/app/services/api.service';
 import { LoadermodelService } from 'src/app/services/loadermodel.service';
 import { VoiceService } from 'src/app/services/voice.service';
-
-import { Component, OnInit } from '@angular/core';
-import { FormBuilder, FormGroup, Validators } from '@angular/forms';
-import { Router } from '@angular/router';
 
 @Component({
   selector: 'app-deposit',
@@ -23,11 +22,12 @@ export class DepositComponent implements OnInit {
     private loader: LoadermodelService,
     private voiceService: VoiceService
   ) {}
-  ngOnInit() {
+
+  ngOnInit(): void {
     this.initDepositForm();
-    this.voiceService.setDepositForm(this.depositForm); // Pass the form to VoiceService
+    this.voiceService.setDepositComponent(this);
   }
-  
+
   private initDepositForm(): void {
     this.depositForm = this.fb.group({
       amount: ['', [Validators.required, Validators.min(1)]],
@@ -41,6 +41,8 @@ export class DepositComponent implements OnInit {
         ]
       ]
     });
+
+    this.voiceService.setDepositForm(this.depositForm); // ✅ Now depositForm is initialized
   }
 
   onSubmit(): void {
@@ -54,10 +56,9 @@ export class DepositComponent implements OnInit {
     
     const cleanedAmount = typeof amount === 'string' ? amount.trim().replace(/\s+/g, '') : String(amount);
     const cleanedPin = typeof pin === 'string' ? pin.trim().replace(/\s+/g, '') : String(pin);
-    
 
     this.loader.show('Depositing...'); 
-    this.apiService.deposit(amount, pin).subscribe({
+    this.apiService.deposit(cleanedAmount, cleanedPin).subscribe({
       next: (response: any) => {
         this.loader.hide();
         this._toastService.success(response.msg);

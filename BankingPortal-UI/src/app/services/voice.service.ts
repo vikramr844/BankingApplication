@@ -13,6 +13,9 @@ import { ToastService } from 'angular-toastify';
 import { ResetPasswordComponent } from '../components/reset-password/reset-password.component';
 import { DepositComponent } from '../components/deposit/deposit.component';
 import { VoiceAssistantComponent } from '../components/voice-assistant/voice-assistant.component';
+import { ApiService } from 'src/app/services/api.service';
+import { NgZone } from '@angular/core';
+import { WithdrawComponent } from '../components/withdraw/withdraw.component';
 
 declare var annyang: any;
 
@@ -43,13 +46,16 @@ export class VoiceService {
   private depositForm?: FormGroup;
   private depositComponent?: DepositComponent;
   private depositMoney: { amount?: string; pin?: string } = {};
-  
-  
+ 
+  private withdrawForm?: FormGroup;
+  private withdrawComponent?: WithdrawComponent;
+  private withdrawMoney: { amount?: string; pin?: string } = {};
+
   private isListening: boolean = false;
+  private isProcessing = false; // Prevent duplicate transactions
 
   private resetStatus: 'idle' | 'resetting' | 'reset' = 'idle';
    private _toastService?: ToastService;
-
    setAssistantComponent(assistant: VoiceAssistantComponent) {
     console.log('Assistant component set:', assistant);
     this.assistantComponent = assistant;
@@ -57,10 +63,13 @@ export class VoiceService {
   
 
 
-  constructor(private authService: AuthService, private router: Router, private tts: ResponsiveVoiceService) {}
+  constructor(private authService: AuthService,  private apiService: ApiService,
+    private router: Router, private tts: ResponsiveVoiceService) {}
+  
   private resetState(): void {
     this.resetStatus = 'resetting';
   this.depositMoney
+  this.withdrawMoney
     this.loginData = {};
     this.loginOtpData = {};
     this.resetPassword = {};
@@ -92,7 +101,30 @@ export class VoiceService {
   
    
   }
+  setDepositComponent(depositComponent: DepositComponent) {
+    this.depositComponent = depositComponent;
+  }
+    setWithdrawComponent(withdrawComponent: WithdrawComponent) {
+      this.withdrawComponent = withdrawComponent;
+  }
+
+  private fetchBalance(): void {
+    this.apiService.getAccountDetails().subscribe({
+      next: (data: any) => {
+        if (data && data.balance !== undefined) {
+          this.speak(`Your current balance is ${data.balance} rupees.`);
+        } else {
+          this.speak('Unable to retrieve balance. Please try again later.');
+        }
+      },
+      error: () => {
+        this.speak('Error fetching balance. Please check your account.');
+      },
+    });
+  }
   
+  
+
   async initializeVoiceCommands(
     loginForm?: FormGroup,
     loginComponent?: LoginComponent,
@@ -105,7 +137,9 @@ export class VoiceService {
     resetPasswordForm?: FormGroup,
     resetPasswordComponent?: ResetPasswordComponent,
     depositForm?: FormGroup,
-    depositComponent?: DepositComponent
+    depositComponent?: DepositComponent,
+    withdrawForm?: FormGroup,
+    withdrawComponent?: WithdrawComponent
   ): Promise<void> {
     try {
       if (!annyang) {
@@ -145,6 +179,12 @@ export class VoiceService {
         this.depositComponent = depositComponent;
         console.log('Deposit component initialized in VoiceService.');
       }
+
+      if (withdrawForm && withdrawComponent) {
+        this.withdrawForm = withdrawForm;
+        this.withdrawComponent = withdrawComponent;
+        console.log('withdraw component initialized in VoiceService.');
+      }
       const activationCommands: { [key: string]: () => void } = {
         'hello': () => this.startListening(),
         'hello bank': () => this.startListening(),
@@ -167,19 +207,13 @@ export class VoiceService {
         console.log('Voice assistant activated.');
         speechSynthesis.resume();
         this.speak('How can I help you?');
-
-   
-
         const functionalCommands: { [key: string]: (input?: string) => void } = {
             '*input': (input?: string) => this.handleInput(input),
         };
-
         annyang.addCommands(functionalCommands);
         annyang.start({ autoRestart: true, continuous: true });
     }
 }
-
-
 
   private reloadPage(): void {
     console.log('Reloading page...');
@@ -226,6 +260,19 @@ export class VoiceService {
     }
 }
 
+
+private navigateToWithdraw(): void {
+  console.log("Checking login status:", this.authService.isLoggedIn()); 
+  if (this.authService.isLoggedIn()) {
+      this.router.navigate(['/account/withdraw']);
+      this.speak('Redirecting to Withdraw page. please say your amount');
+  } else {
+      this.speak('You need to log in first.');
+      console.warn(" Unauthorized access attempt to deposit page.");
+  }
+}
+
+
 private navigateLoginWithOtp(): void {
   if (this.isListening) {
     this.router.navigate(['/login/otp']);
@@ -261,7 +308,16 @@ private navigateToCreatePin(): void {
     this.speak('You need to log in first.');
   }
 }
-
+private navigateToDashboard():void{
+  console.log("user navigating to the dashboard");
+  this.router.navigate(['/dashboard']).then(()=>{
+     this.step=25;
+     this.speak('Redirecting to dashboard page.');
+  }).catch(error => {
+    console.error("Navigation error:", error);
+    this.speak('Failed to navigate to dashboard page.');
+  });
+}
 
 
 private logout(): void {
@@ -296,130 +352,142 @@ private logout(): void {
 
   private handleInput(input?: string): void {
     try {
-      console.log("Recognized voice input:", input);
-  
-      if (!this.isListening || !input) {
-        console.warn('Invalid voice command input:', input);
-        return this.startListening();
-      }
-  
-      input = input.trim().toLowerCase();
-  
-      const isLoggedIn = this.authService.isLoggedIn();
-      const isOnDashboard = this.router.url.toLowerCase().includes('/dashboard');
-  
-      const exactKeywordActions: { [key: string]: () => void } = {
+        console.log("Recognized voice input:", input);
 
-        "create a pin": () => this.navigateToCreatePin(),
-        "create pin": () => this.navigateToCreatePin(),
-        "deposit": () => this.navigateToDeposit(),
-      };
-  
-      for (const keyword in exactKeywordActions) {
-        if (input.includes(keyword)) {
-          console.log(`Matched keyword: "${keyword}"`);
-          exactKeywordActions[keyword]();
-          return;
+        if (!this.isListening || !input) {
+            console.warn('Invalid voice command input:', input);
+            return this.startListening();
         }
-      }
-  
-      const keywordActions: { [key: string]: () => void } = {
-        "index": () => this.navigateToHome(),
-        "home": () => this.navigateToHome(),
-        "login": () => {
-          if (!isLoggedIn && !isOnDashboard) {
-            this.navigateToLogin();
-          } else {
-            this.speak('You are already logged in.');
-          }
-        },
-        "sign in": () => {
-          if (!isLoggedIn && !isOnDashboard) {
-            this.navigateToLogin();
-          } else {
-            this.speak('You are already logged in.');
-          }
-        },
-        "login with otp": () => this.navigateLoginWithOtp(),
-        "otp": () => this.navigateLoginWithOtp(),
-        "create account": () => {
-          if (!isLoggedIn && !isOnDashboard) {
-            this.navigateToRegister();
-          } else {
-            this.speak('You are already logged in.');
-          }
-        },
-        "register": () => {
-          if (!isLoggedIn && !isOnDashboard) {
-            this.navigateToRegister();
-          } else {
-            this.speak('You are already logged in.');
-          }
-        },
-        "sign up": () => {
-          if (!isLoggedIn && !isOnDashboard) {
-            this.navigateToRegister();
-          } else {
-            this.speak('You are already logged in.');
-          }
-        },
-        "log out": () => {
-          if (isLoggedIn) {
-            this.logout();
-            this.reloadPage();
-          } else {
-            this.speak('You are not logged in.');
-          }
-        },
-        "sign out": () => {
-          if (isLoggedIn) {
-            this.logout();
-            this.reloadPage();
-          } else {
-            this.speak('You are not logged in.');
-          }
-        },
-        "exit": () => {
-          if (isLoggedIn) {
-            this.logout();
-          } else {
-            this.speak('You are not logged in.');
-          }
-        },
-        "stop": () => this.stopListening(),
-        "forget password": () => {
-          if (!isLoggedIn && !isOnDashboard) {
-            this.navigateForgetPassword();
-          } else {
-            this.speak('You are already logged in.');
-          }
-        },
-        "reset password": () => {
-          if (!isLoggedIn && !isOnDashboard) {
-            this.navigateForgetPassword();
-          } else {
-            this.speak('You are already logged in.');
-          }
-        },
-      };
-  
-      for (const keyword in keywordActions) {
-        if (input.includes(keyword)) {
-          console.log(`Matched keyword: "${keyword}"`);
-          keywordActions[keyword]();
-          return;
+
+        input = input.trim().toLowerCase();
+
+        const isLoggedIn = this.authService.isLoggedIn();
+        const isOnDashboard = this.router.url.toLowerCase().includes('/dashboard');
+
+        // If user says "cancel", navigate to the dashboard immediately
+        if (input.includes("cancel")) {
+            console.log('User said "cancel", navigating to dashboard.');
+            this.navigateToDashboard();
+            return;
         }
-      }
-  
-      this.processLoginOrRegister(input);
+
+        if (isOnDashboard) {
+            const exactKeywordActions: { [key: string]: () => void } = {
+                "create a pin": () => this.navigateToCreatePin(),
+                "create pin": () => this.navigateToCreatePin(),
+                "dashboard": () => this.navigateToDashboard(),
+                "deposit": () => this.navigateToDeposit(),
+                "withdraw": () => this.navigateToWithdraw(),
+                "get money": () => this.navigateToWithdraw(),
+                'check balance': () => this.fetchBalance()
+            };
+            for (const keyword in exactKeywordActions) {
+                if (input.includes(keyword)) {
+                    console.log(`Matched keyword: "${keyword}"`);
+                    exactKeywordActions[keyword]();
+                    return;
+                }
+            }
+        }
+
+        const keywordActions: { [key: string]: () => void } = {
+            "index": () => this.navigateToHome(),
+            "home": () => this.navigateToHome(),
+            "login": () => {
+                if (!isLoggedIn && !isOnDashboard) {
+                    this.navigateToLogin();
+                } else {
+                    this.speak('You are already logged in.');
+                }
+            },
+            "sign in": () => {
+                if (!isLoggedIn && !isOnDashboard) {
+                    this.navigateToLogin();
+                } else {
+                    this.speak('You are already logged in.');
+                }
+            },
+            "login with otp": () => this.navigateLoginWithOtp(),
+            "otp": () => this.navigateLoginWithOtp(),
+            "create account": () => {
+                if (!isLoggedIn && !isOnDashboard) {
+                    this.navigateToRegister();
+                } else {
+                    this.speak('You are already logged in.');
+                }
+            },
+            "register": () => {
+                if (!isLoggedIn && !isOnDashboard) {
+                    this.navigateToRegister();
+                } else {
+                    this.speak('You are already logged in.');
+                }
+            },
+            "sign up": () => {
+                if (!isLoggedIn && !isOnDashboard) {
+                    this.navigateToRegister();
+                } else {
+                    this.speak('You are already logged in.');
+                }
+            },
+            "log out": () => {
+                if (isLoggedIn) {
+                    this.logout();
+                    this.reloadPage();
+                } else {
+                    this.speak('You are not logged in.');
+                }
+            },
+            "sign out": () => {
+                if (isLoggedIn) {
+                    this.logout();
+                    this.reloadPage();
+                } else {
+                    this.speak('You are not logged in.');
+                }
+            },
+            "exit": () => {
+                if (isLoggedIn) {
+                    this.logout();
+                } else {
+                    this.speak('You are not logged in.');
+                }
+            },
+            "stop": () => this.stopListening(),
+            "forget password": () => {
+                if (!isLoggedIn && !isOnDashboard) {
+                    this.navigateForgetPassword();
+                } else {
+                    this.speak('You are already logged in.');
+                }
+            },
+            "reset password": () => {
+                if (!isLoggedIn && !isOnDashboard) {
+                    this.navigateForgetPassword();
+                } else {
+                    this.speak('You are already logged in.');
+                }
+            },
+        };
+
+        for (const keyword in keywordActions) {
+            if (input.includes(keyword)) {
+                console.log(`Matched keyword: "${keyword}"`);
+                keywordActions[keyword]();
+                return;
+            }
+        }
+
+        this.processHandler(input);
     } catch (error) {
-      console.error('Error processing voice input:', error);
+        console.error('Error processing voice input:', error);
     }
-  }
+}
 
 
 
-private processLoginOrRegister(input: string): void {
+
+private processHandler(input: string): void {
   const currentUrl = this.router.url.toLowerCase();
 
   if (currentUrl.includes('login/otp')) {
@@ -437,6 +505,9 @@ private processLoginOrRegister(input: string): void {
   }
   else if (currentUrl.includes('account/deposit')) {
     this.processDeposit(input);
+  }
+  else if (currentUrl.includes('account/withdraw')) {
+    this.processWithdraw(input);
   }
 }
 
@@ -849,10 +920,7 @@ public processDeposit(input: string): void {
     }
 
     if (input.toLowerCase() === 'reset') {
-      this.speak('Deposit process reset. Please say your deposit amount.');
-      this.resetState();
-      this.step = 22;
-      
+      this.resetProcess('Deposit process reset. Please say your deposit amount.', 22);
       return;
     }
 
@@ -864,11 +932,9 @@ public processDeposit(input: string): void {
     switch (this.step) {
       case 22:
         let amount = this.convertWordsToNumbers(input) || parseFloat(input);
-        console.log(`Converted amount: ${amount}`);
-
         if (!isNaN(amount) && amount > 0) {
           this.depositMoney.amount = amount.toString();
-          this.updateInputField('amount', input);
+          this.updateInputField('amount', amount.toString()); 
           this.speak(`You said ${amount} as the amount. Now, please say your PIN.`);
           this.step = 23;
         } else {
@@ -877,74 +943,169 @@ public processDeposit(input: string): void {
         break;
 
       case 23:
-        this.depositMoney.pin = input.trim();
-        if (!this.depositMoney.pin) {
-          this.speak('PIN cannot be empty. Please say your PIN again.');
+        if (!/^\d{4}$/.test(input.trim())) {
+          this.speak('Invalid PIN format. Please say a 4-digit number.');
           return;
         }
-        this.updateInputField('pin', input);
-        this.speak('PIN received. Say "confirm" to complete the deposit or "reset" to start over.');
+
+        if (this.isProcessing) return;
+        this.isProcessing = true;
+
+        this.depositMoney.pin = input.trim();
+        this.updateInputField('pin', input.trim()); // ✅ Now PIN updates the input field
+
+        this.isProcessing = false;
         this.step = 24;
+        this.speak('PIN entered. Say "confirm" to complete the deposit or "reset" to start over.');
         break;
 
-        case 24:
-          if (input.toLowerCase() === 'confirm') {
-              if (!this.depositMoney.amount) {
-                  console.error('Deposit amount is missing:', this.depositMoney);
-                  this.speak('Deposit amount is missing. Please enter the amount and try again.');
-                  this.resetState();
-                  break;
-              }
-      
-              if (!this.depositMoney.pin) {
-                  console.error('PIN is missing:', this.depositMoney);
-                  this.speak('PIN is missing. Please enter your PIN and try again.');
-                  this.resetState();
-                  break;
-              }
-      
-              console.log('Submitting deposit:', this.depositMoney);
-              this.speak('Processing your deposit. Please wait.');
-              this.loader?.show('Processing deposit...');
-      
-              // Ensure depositComponent is initialized before using it
-              if (!this.depositComponent) {
-                  console.error('Deposit component is not initialized. Cannot proceed.');
-                  this.speak('An error occurred. Deposit component is unavailable. Please restart.');
-                  this.resetState();
-                  break;
-              }
-      
-              try {
-                  this.depositComponent.onSubmit();
-      
-                  // Add a small delay before speaking success message
-                  setTimeout(() => {
-                      this.speak('Your deposit is being processed successfully.');
-                  }, 500);
-              } catch (error) {
-                  console.error('Error submitting deposit:', error);
-                  this.speak('An error occurred while processing your deposit. Please try again later.');
-                  this.resetState();
-              }
-          } else {
-              this.speak('Invalid input. Please say "confirm" to proceed or "reset" to start over.');
+      case 24:
+        if (input.toLowerCase() === 'confirm') {
+          if (!this.depositMoney.amount || !this.depositMoney.pin) {
+            this.handleError('Amount or PIN is missing. Please try again.', 22);
+            return;
           }
-          break;
-      
+
+          if (!this.depositComponent) {
+            this.handleError('Deposit component is unavailable. Please restart.', 22);
+            return;
+          }
+
+          if (this.isProcessing) return;
+          this.isProcessing = true;
+
+          this.speak('Processing your deposit. Please wait.');
+          this.loader?.show('Processing deposit...');
+
+          try {
+            this.depositComponent.onSubmit();
+            setTimeout(() => {
+              this.speak('Your deposit has been processed successfully.');
+              this.isProcessing = false;
+              this.step = 22; // Reset process
+            }, 500);
+          } catch (error) {
+            this.handleError('An error occurred while processing your deposit. Please try again later.', 22);
+          }
+        } else {
+          this.speak('Invalid input. Please say "confirm" to proceed or "reset" to start over.');
+        }
+        break;
+
       default:
-        console.error(`Unexpected step: ${this.step}. Resetting process.`);
-        this.speak('Unexpected error. Restarting the deposit process.');
-        this.resetState();
-        this.step = 22;
+        this.handleError('Unexpected error. Restarting the deposit process.', 22);
     }
   } catch (error) {
-    console.error('Error in processDeposit:', error);
-    this.speak('An error occurred during deposit processing. Please try again.');
-    this.resetState();
-    this.step = 22;
+    this.handleError('An error occurred during deposit processing. Please try again.', 22);
   }
 }
+
+
+public processWithdraw(input: string): void {
+  try {
+    console.log(`processWithdraw called with input: "${input}", Step: ${this.step}`);
+
+    if (!input.trim()) {
+      this.speak('Input not recognized. Please try again.');
+      return;
+    }
+
+    if (input.toLowerCase() === 'reset') {
+      this.resetProcess('Withdraw process reset. Please say your withdraw amount.', 26);
+      return;
+    }
+
+    if (![26, 27, 28].includes(this.step)) {
+      console.warn(`Invalid step detected: ${this.step}. Resetting to step 26.`);
+      this.step = 26;
+    }
+
+    switch (this.step) {
+      case 26:
+        let amount = this.convertWordsToNumbers(input) || parseFloat(input);
+        if (!isNaN(amount) && amount > 0) {
+          this.withdrawMoney.amount = amount.toString();
+          this.updateInputField('amount', amount.toString()); 
+          this.speak(`You said ${amount} as the amount. Now, please say your PIN.`);
+          this.step = 27;
+        } else {
+          this.speak('Invalid amount. Please say a valid number.');
+        }
+        break;
+
+      case 27:
+        if (!/^\d{4}$/.test(input.trim())) {
+          this.speak('Invalid PIN format. Please say a 4-digit number.');
+          return;
+        }
+
+        if (this.isProcessing) return;
+        this.isProcessing = true;
+
+        this.withdrawMoney.pin = input.trim();
+        this.updateInputField('pin', input.trim()); // ✅ Now PIN updates the input field
+
+        this.isProcessing = false;
+        this.step = 28;
+        this.speak('PIN entered. Say "confirm" to complete the withdrawal or "reset" to start over.');
+        break;
+
+      case 28:
+        if (input.toLowerCase() === 'confirm') {
+          if (!this.withdrawMoney.amount || !this.withdrawMoney.pin) {
+            this.handleError('Amount or PIN is missing. Please try again.', 26);
+            return;
+          }
+
+          if (!this.withdrawComponent) {
+            this.handleError('Withdraw component is unavailable. Please restart.', 26);
+            return;
+          }
+
+          if (this.isProcessing) return;
+          this.isProcessing = true;
+
+          this.speak('Processing your withdrawal. Please wait.');
+          this.loader?.show('Processing withdrawal...');
+
+          try {
+            this.withdrawComponent.onSubmit();
+            setTimeout(() => {
+              this.speak('Your withdrawal has been processed successfully.');
+              this.isProcessing = false;
+              this.step = 26; // Reset process
+            }, 500);
+          } catch (error) {
+            this.handleError('An error occurred while processing your withdrawal. Please try again later.', 26);
+          }
+        } else {
+          this.speak('Invalid input. Please say "confirm" to proceed or "reset" to start over.');
+        }
+        break;
+
+      default:
+        this.handleError('Unexpected error. Restarting the withdrawal process.', 26);
+    }
+  } catch (error) {
+    this.handleError('An error occurred during withdrawal processing. Please try again.', 26);
+  }
+}
+
+
+
+private handleError(message: string, step: number): void {
+  console.error(message);
+  this.speak(message);
+  this.resetState();
+  this.step = step;
+}
+
+private resetProcess(message: string, step: number): void {
+  this.speak(message);
+  this.resetState();
+  this.step = step;
+}
+
 
 private convertWordsToNumbers(input: string): number | null {
   console.log("Received input:", input);
@@ -956,21 +1117,24 @@ private convertWordsToNumbers(input: string): number | null {
     "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
     "nineteen": 19, "twenty": 20, "thirty": 30, "forty": 40,
     "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80,
-    "ninety": 90, "hundred": 100, "thousand": 1000
+    "ninety": 90, "hundred": 100, "thousand": 1000, 
+    "lakh": 100000, "lakhs": 100000, 
+    "crore": 10000000, "crores": 10000000
   };
 
   let words = input.toLowerCase().replace(/[^a-z\s0-9]/g, '').split(/\s+/);
-  let total = 0, current = 0;
+  let total = 0, current = 0, lastMultiplier = 1;
 
   for (let word of words) {
     if (wordsToNumbers[word] !== undefined) {
       let num = wordsToNumbers[word];
 
-      if (num === 1000) {
+      if (num >= 100 && num < 1000) {
+        current *= num;
+      } else if (num >= 1000) {
         total += (current === 0 ? 1 : current) * num;
         current = 0;
-      } else if (num >= 100) {
-        current *= num;
+        lastMultiplier = num;
       } else {
         current += num;
       }
@@ -989,6 +1153,10 @@ setDepositForm(form: FormGroup): void {
   this.depositForm = form;
   console.log('Deposit form set in VoiceService:', this.depositForm);
 }
+setWithdrawForm(form: FormGroup): void {
+  this.withdrawForm = form;
+  console.log('withdraw form set in VoiceService:', this.withdrawForm);
+}
 
 private updateInputField(fieldName: string, value: string): void {
   try {
@@ -1002,6 +1170,13 @@ private updateInputField(fieldName: string, value: string): void {
       return;
     }
 
+    if (this.withdrawForm && this.withdrawForm.get(fieldName)) {
+      this.withdrawForm.get(fieldName)?.setValue(trimmedValue);
+      console.log(`Updated field "${fieldName}" in withdraw Form with value: ${trimmedValue}`);
+      return;
+    }
+
+
     // Fallback to other forms if depositForm is not available or doesn't have the field
     const forms = [
       { form: this.resetPasswordForm, name: 'Reset Password Form' },
@@ -1010,6 +1185,7 @@ private updateInputField(fieldName: string, value: string): void {
       { form: this.otpForm, name: 'OTP Form' },
       { form: this.pinChangeForm, name: 'PIN Change Form' },
       { form: this.depositForm, name: 'Deposit Form' },
+      { form: this.withdrawForm, name: 'withdraw Form' },
     ];
 
     let fieldUpdated = false;
@@ -1047,14 +1223,30 @@ private updateForm(form?: FormGroup, data?: any): void {
 }
 
 
-  speak(message: string): void {
-    try {
+
+speak(message: string): void {
+  console.log("Attempting to speak:", message);
+
+  if (window.speechSynthesis.speaking) {
+    console.warn("Speech already running. Cancelling and delaying restart...");
+    window.speechSynthesis.cancel();
+
+    setTimeout(() => {
       this.tts.speak(message);
-    } catch (error) {
-      console.error(' Error in text-to-speech:', error);
-    }
+    }, 500);  // Add a delay before restarting speech
+
+    return;
   }
-  
+
+  try {
+    this.tts.speak(message);
+  } catch (error) {
+    console.error("Error in text-to-speech:", error);
+  }
+}
+
+
+
   // private resetState(): void {
   //   this.isListening = false;
   //   this.startListening();

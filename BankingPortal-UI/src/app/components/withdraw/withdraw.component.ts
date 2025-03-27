@@ -5,6 +5,7 @@ import { LoadermodelService } from 'src/app/services/loadermodel.service';
 import { Component, OnInit } from '@angular/core';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
+import { VoiceService } from 'src/app/services/voice.service';
 
 @Component({
   selector: 'app-withdraw',
@@ -19,44 +20,60 @@ export class WithdrawComponent implements OnInit {
     private apiService: ApiService,
     private _toastService: ToastService,
     private router: Router,
-    private loader: LoadermodelService // Inject the LoaderService here
+    private loader: LoadermodelService, // Inject the LoaderService
+    private voiceService: VoiceService
   ) {}
 
   ngOnInit(): void {
-    this.initWithDrawForm();
+    this.initWithdrawForm();
+    this.voiceService.setWithdrawComponent(this);
   }
 
-  initWithDrawForm() {
+  private initWithdrawForm(): void {
     this.withdrawForm = this.fb.group({
-      amount: ['', [Validators.required, Validators.min(0)]],
+      amount: ['', [Validators.required, Validators.min(1)]],
       pin: [
         '',
-        [Validators.required, Validators.minLength(4), Validators.maxLength(4)],
-      ],
+        [
+          Validators.required,
+          Validators.minLength(4),
+          Validators.maxLength(4),
+          Validators.pattern(/^\d{4}$/) // Ensures only 4-digit numbers
+        ]
+      ]
     });
+
+    this.voiceService.setWithdrawForm(this.withdrawForm); // ✅ Set up voice service
   }
 
   onSubmit(): void {
-    if (this.withdrawForm.valid) {
-      const amount = this.withdrawForm.get('amount')?.value;
-      const pin = this.withdrawForm.get('pin')?.value;
-
-      this.loader.show('Withdrawing...'); // Show the loader before making the API call
-      this.apiService.withdraw(amount, pin).subscribe({
-        next: (response: any) => {
-          this.loader.hide(); // Hide the loader on successful withdrawal
-          this._toastService.success(response.msg);
-          this.withdrawForm.reset();
-          this.router.navigate(['/dashboard']);
-          console.log('Withdrawal successful!', response);
-        },
-        error: (error: any) => {
-          this.loader.hide(); // Hide the loader on withdrawal request failure
-          this._toastService.error(error.error);
-          console.error('Withdrawal failed:', error);
-        },
-      });
+    if (!this.withdrawForm.valid) {
+      this._toastService.error('Please fill in all fields correctly.');
+      return;
     }
-    this.initWithDrawForm();
+
+    let amount = this.withdrawForm.get('amount')?.value;
+    let pin = this.withdrawForm.get('pin')?.value;
+
+    // Clean input values
+    const cleanedAmount = typeof amount === 'string' ? amount.trim().replace(/\s+/g, '') : String(amount);
+    const cleanedPin = typeof pin === 'string' ? pin.trim().replace(/\s+/g, '') : String(pin);
+
+    this.loader.show('Withdrawing...'); // Show loader
+
+    this.apiService.withdraw(cleanedAmount, cleanedPin).subscribe({
+      next: (response: any) => {
+        this.loader.hide(); // Hide loader
+        this._toastService.success(response.msg);
+        this.withdrawForm.reset();
+        this.router.navigate(['/dashboard']);
+        console.log('Withdrawal successful!', response);
+      },
+      error: (error: any) => {
+        this.loader.hide(); // Hide loader
+        this._toastService.error(error.error || 'Withdrawal failed');
+        console.error('Withdrawal failed:', error);
+      }
+    });
   }
 }

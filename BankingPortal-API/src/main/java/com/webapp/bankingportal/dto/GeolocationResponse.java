@@ -2,6 +2,7 @@ package com.webapp.bankingportal.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import lombok.Data;
 
 import java.util.Map;
@@ -17,8 +18,8 @@ public class GeolocationResponse {
         private int geonameId;
 
         private Map<String, String> names;
-
     }
+
 
     @Data
     public static class Continent {
@@ -100,7 +101,7 @@ public class GeolocationResponse {
         private String userType;
 
     }
-
+    @JsonDeserialize()
     private City city;
     private Continent continent;
     private Country country;

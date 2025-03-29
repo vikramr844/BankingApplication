@@ -1,8 +1,11 @@
 package com.webapp.bankingportal.service;
 
 import java.io.File;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
+import com.webapp.bankingportal.entity.User;
+import jakarta.mail.internet.MimeMessage;
 import org.springframework.mail.MailException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
@@ -99,6 +102,39 @@ public class EmailServiceImpl implements EmailService {
                 + "<a href=\"https://github.com/vikram844\" style=\"margin: 0 10px; color: #3f51b5; text-decoration: none;\">GitHub</a>"
                 + "</div>" + "</div>" + "</div>" + "</div>";
     }
+
+//    public void getFailedLoginNotification(String email, String failedSubject, String errorMessage) {
+//        String userOptional = email;
+//
+//        if (!userOptional.isEmpty()) {
+//            String originalUserEmail = email; // Get registered email
+//
+//            String failureMessage = String.format(
+//                    "<div style='font-family: Arial, sans-serif; padding: 15px; border-radius: 5px; background: #ffebee; color: #b71c1c;'>"
+//                            + "<h3>Security Alert: Failed Login Attempt</h3>"
+//                            + "<p>We detected a failed login attempt to your account using this email.</p>"
+//                            + "<p>Subject: <strong>%s</strong></p>"
+//                            + "<p>Error Details: %s</p>"
+//                            + "<p>If this wasn't you, we recommend updating your password immediately.</p>"
+//                            + "</div>", failedSubject, errorMessage);
+//
+//            try {
+//                MimeMessage message = mailSender.createMimeMessage();
+//                MimeMessageHelper helper = new MimeMessageHelper(message, true);
+//                helper.setTo(originalUserEmail);
+//                helper.setSubject("Security Alert: Failed Login Attempt");
+//                helper.setText(failureMessage, true);
+//
+//                mailSender.send(message);
+//                log.info("Failed login notification sent to {}", originalUserEmail);
+//            } catch (MessagingException e) {
+//                log.error("Error sending failed login notification email: {}", e.getMessage());
+//            }
+//        } else {
+//            log.warn("Failed login attempt for non-existent email: {}", email);
+//        }
+//    }
+
 
     public void sendEmailWithAttachment(String to, String subject, String text, String attachmentFilePath) {
         try {

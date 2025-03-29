@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { FormGroup } from '@angular/forms';
+import { FormControl, FormGroup } from '@angular/forms';
 import { Router } from '@angular/router';
 import { ResponsiveVoiceService } from '../services/responsive-voice.service';
 import { LoginComponent } from '../components/login/login.component';
@@ -16,6 +16,9 @@ import { VoiceAssistantComponent } from '../components/voice-assistant/voice-ass
 import { ApiService } from 'src/app/services/api.service';
 import { NgZone } from '@angular/core';
 import { WithdrawComponent } from '../components/withdraw/withdraw.component';
+import {FundTransferComponent} from '../components/fund-transfer/fund-transfer.component';
+import { TransactionHistoryComponent } from '../components/transaction-history/transaction-history.component';
+
 
 declare var annyang: any;
 
@@ -35,10 +38,18 @@ export class VoiceService {
   private otpComponent?: OtpComponent;
   private resetPasswordForm?:FormGroup;
   private resetPasswordComponent?:ResetPasswordComponent;
+  private newPasswordForm?:FormGroup;
+  private FundTransferForm?:FormGroup;
+  private FundTransferComponent?:FundTransferComponent;
+  private transactionHistoryComponent?:TransactionHistoryComponent;
+
+
+  
   public step = 0;
   private loginData: { identifier?: string; password?: string; otp?: string } = {};
-  private loginOtpData: { identifier?: string; otp?: string } = {};
-  private resetPassword: { identifier?: string; otp?: string } = {};
+  private loginOtpData: { identifier: string; otp: string } = {identifier:'',otp:''};
+  private resetPassword: { identifier?: string; otp?: string ;newPassword?:string; confirmPassword?:string} = {};
+
   private registerData: { name?: string; email?: string; countryCode?: string; phoneNumber?: string; address?: string; confirmPassword?: string; password?: string } = {};
   private accountPinData: { newPin?: string; confirmPin?: string; passwordGenerate?: string } = {};
   private assistantComponent?: VoiceAssistantComponent;
@@ -50,6 +61,12 @@ export class VoiceService {
   private withdrawForm?: FormGroup;
   private withdrawComponent?: WithdrawComponent;
   private withdrawMoney: { amount?: string; pin?: string } = {};
+
+
+  private fundTransferForm?:FormGroup;
+  private fundTransferComponent?:FundTransferComponent;
+  private fundTransferMoney:{amount?:string;targetAccountNumber?:string;pin?:string}= {};
+
 
   private isListening: boolean = false;
   private isProcessing = false; // Prevent duplicate transactions
@@ -64,15 +81,22 @@ export class VoiceService {
 
 
   constructor(private authService: AuthService,  private apiService: ApiService,
-    private router: Router, private tts: ResponsiveVoiceService) {}
+    private router: Router,   private zone: NgZone,private tts: ResponsiveVoiceService) {}
   
-  private resetState(): void {
+  public resetState(): void {
     this.resetStatus = 'resetting';
   this.depositMoney
   this.withdrawMoney
+  this.fundTransferMoney
     this.loginData = {};
-    this.loginOtpData = {};
+    this.loginOtpData = {identifier:'',otp:''};
     this.resetPassword = {};
+
+this.fundTransferMoney={
+  amount:'',
+  pin:'',
+  targetAccountNumber:''
+};
 
     this.registerData = {
       name: '',
@@ -83,6 +107,7 @@ export class VoiceService {
       password: '',
       confirmPassword: ''
     };
+
     this.accountPinData = {
       newPin: '',
       confirmPin: '',
@@ -95,7 +120,7 @@ export class VoiceService {
     this.otpForm?.reset();
     this.resetPasswordForm?.reset();
     this.pinChangeForm?.reset();
-  
+   this.fundTransferForm?.reset();
     this.resetStatus = 'reset';
     this.speak('State has been reset. You can start again.');
   
@@ -107,6 +132,15 @@ export class VoiceService {
     setWithdrawComponent(withdrawComponent: WithdrawComponent) {
       this.withdrawComponent = withdrawComponent;
   }
+
+  setFundTransfer(fundTransferComponent: FundTransferComponent) {
+    this.fundTransferComponent = fundTransferComponent;
+}
+
+setTransactionHistoryComponent(component: TransactionHistoryComponent) {
+  this.transactionHistoryComponent = component;
+  console.log('Transaction history component set in VoiceService');
+}
 
   private fetchBalance(): void {
     this.apiService.getAccountDetails().subscribe({
@@ -163,7 +197,7 @@ export class VoiceService {
         this.otpForm = otpForm;
         this.otpComponent = otpComponent;
       }
-  
+    
       if (resetPasswordForm && resetPasswordComponent) {
         this.resetPasswordForm = resetPasswordForm;
         this.resetPasswordComponent = resetPasswordComponent;
@@ -185,6 +219,13 @@ export class VoiceService {
         this.withdrawComponent = withdrawComponent;
         console.log('withdraw component initialized in VoiceService.');
       }
+
+      if (this.fundTransferForm && this.fundTransferComponent) {
+        this.FundTransferForm = this.FundTransferForm;
+        this.fundTransferComponent = this.fundTransferComponent;
+        console.log('fundTransfer Component initialized in VoiceService.');
+      }
+
       const activationCommands: { [key: string]: () => void } = {
         'hello': () => this.startListening(),
         'hello bank': () => this.startListening(),
@@ -200,19 +241,44 @@ export class VoiceService {
       this.speakError();
     }
   }
-  
-  private startListening(): void {
-    if (!this.isListening) {
-      this.isListening = true;
-        console.log('Voice assistant activated.');
-        speechSynthesis.resume();
-        this.speak('How can I help you?');
-        const functionalCommands: { [key: string]: (input?: string) => void } = {
-            '*input': (input?: string) => this.handleInput(input),
-        };
-        annyang.addCommands(functionalCommands);
-        annyang.start({ autoRestart: true, continuous: true });
+
+  private wakeUpAssistant(): void {
+    if (this.assistantComponent) {
+      this.assistantComponent.showAssistant();
+      this.speak('Hello! How can I help you today?');
+      this.startListening();
+    } else {
+      console.warn('Assistant component not available');
+      this.speak('Voice assistant is not available right now.');
     }
+  }
+  
+//   private startListening(): void {
+//     if (!this.isListening) {
+//       this.isListening = true;
+//         console.log('Voice assistant activated.');
+//         speechSynthesis.resume();
+//         this.speak('How can I help you?');
+//         const functionalCommands: { [key: string]: (input?: string) => void } = {
+//             '*input': (input?: string) => this.handleInput(input),
+//         };
+//         annyang.addCommands(functionalCommands);
+//         annyang.start({ autoRestart: true, continuous: true });
+//     }
+// }
+private startListening(): void {
+  if (!this.isListening) {
+    this.isListening = true;
+    console.log('Voice assistant activated.');
+    this.assistantComponent?.showAssistant();
+    speechSynthesis.resume();
+    this.speak('How can I help you?');
+    const functionalCommands: { [key: string]: (input?: string) => void } = {
+      '*input': (input?: string) => this.handleInput(input),
+    };
+    annyang.addCommands(functionalCommands);
+    annyang.start({ autoRestart: true, continuous: true });
+  }
 }
 
   private reloadPage(): void {
@@ -260,6 +326,29 @@ export class VoiceService {
     }
 }
 
+
+private navigateToFundTransfer(): void {
+  console.log("Checking login status:", this.authService.isLoggedIn()); 
+  if (this.authService.isLoggedIn()) {
+      this.router.navigate(['/account/fund-transfer']);
+      this.speak('Redirecting to FundTransfer page. please say your amount');
+  } else {
+      this.speak('You need to log in first.');
+      console.warn(" Unauthorized access attempt to FundTransfer page.");
+  }
+}
+
+
+private navigateToTransactionHistory(): void {
+  console.log("Checking login status:", this.authService.isLoggedIn()); 
+  if (this.authService.isLoggedIn()) {
+      this.router.navigate(['/account/transaction-history']);
+      this.speak('Redirecting To transaction History page.');
+  } else {
+      this.speak('You need to log in first.');
+      console.warn(" Unauthorized access attempt to transaction History  page.");
+  }
+}
 
 private navigateToWithdraw(): void {
   console.log("Checking login status:", this.authService.isLoggedIn()); 
@@ -349,7 +438,6 @@ private logout(): void {
     }
   }
 
-
   private handleInput(input?: string): void {
     try {
         console.log("Recognized voice input:", input);
@@ -363,23 +451,41 @@ private logout(): void {
 
         const isLoggedIn = this.authService.isLoggedIn();
         const isOnDashboard = this.router.url.toLowerCase().includes('/dashboard');
+        const isOnHomePage = this.router.url.toLowerCase() === '/' || this.router.url.toLowerCase().includes('/home');
 
-        // If user says "cancel", navigate to the dashboard immediately
         if (input.includes("cancel")) {
             console.log('User said "cancel", navigating to dashboard.');
             this.navigateToDashboard();
             return;
         }
 
+        if (!isLoggedIn && isOnHomePage) {
+            const restrictedActions = ["dashboard", "deposit", "withdraw", "with draw", "with the draw", "get money", "check balance", "balance"
+              ,"transaction history","history"
+            ];
+            for (const action of restrictedActions) {
+                if (input.includes(action)) {
+                    this.speak("You need to log in first.");
+                    return;
+                }
+            }
+        }
+
         if (isOnDashboard) {
             const exactKeywordActions: { [key: string]: () => void } = {
-                "create a pin": () => this.navigateToCreatePin(),
+                "account pin": () => this.navigateToCreatePin(),
                 "create pin": () => this.navigateToCreatePin(),
                 "dashboard": () => this.navigateToDashboard(),
                 "deposit": () => this.navigateToDeposit(),
                 "withdraw": () => this.navigateToWithdraw(),
+                "with draw": () => this.navigateToWithdraw(),
+                "with the draw": () => this.navigateToWithdraw(),
                 "get money": () => this.navigateToWithdraw(),
-                'check balance': () => this.fetchBalance()
+                "fund transfer": () => this.navigateToFundTransfer(),
+                "transfer": () => this.navigateToFundTransfer(),
+                "history": () => this.navigateToTransactionHistory(),
+                'check balance': () => this.fetchBalance(),
+                'balance': () => this.fetchBalance(),
             };
             for (const keyword in exactKeywordActions) {
                 if (input.includes(keyword)) {
@@ -390,47 +496,67 @@ private logout(): void {
             }
         }
 
-        const keywordActions: { [key: string]: () => void } = {
+
+        if (input === "login with otp" || input === "login via otp") {
+          console.log(`Executing direct OTP login for input: "${input}"`);
+          this.navigateLoginWithOtp();
+          return;
+        
+      }
+       if(input==='generate new'){
+        this.otpComponent?.resendOTP();
+        this.step=16;
+      }
+
+        const keywordActions: { [input: string]: () => void } = {
+          
             "index": () => this.navigateToHome(),
             "home": () => this.navigateToHome(),
             "login": () => {
-                if (!isLoggedIn && !isOnDashboard) {
+                if (!isLoggedIn) {
                     this.navigateToLogin();
                 } else {
                     this.speak('You are already logged in.');
                 }
             },
             "sign in": () => {
-                if (!isLoggedIn && !isOnDashboard) {
+                if (!isLoggedIn) {
                     this.navigateToLogin();
                 } else {
                     this.speak('You are already logged in.');
                 }
             },
-            "login with otp": () => this.navigateLoginWithOtp(),
             "otp": () => this.navigateLoginWithOtp(),
             "create account": () => {
-                if (!isLoggedIn && !isOnDashboard) {
+                if (!isLoggedIn) {
                     this.navigateToRegister();
                 } else {
                     this.speak('You are already logged in.');
                 }
             },
             "register": () => {
-                if (!isLoggedIn && !isOnDashboard) {
+                if (!isLoggedIn) {
                     this.navigateToRegister();
                 } else {
                     this.speak('You are already logged in.');
                 }
             },
             "sign up": () => {
-                if (!isLoggedIn && !isOnDashboard) {
+                if (!isLoggedIn) {
                     this.navigateToRegister();
                 } else {
                     this.speak('You are already logged in.');
                 }
             },
-            "log out": () => {
+            "log out" : () => {
+                if (isLoggedIn) {
+                    this.logout();
+                    this.reloadPage();
+                } else {
+                    this.speak('You are not logged in.');
+                }
+            },
+            "logout": () => {
                 if (isLoggedIn) {
                     this.logout();
                     this.reloadPage();
@@ -455,14 +581,14 @@ private logout(): void {
             },
             "stop": () => this.stopListening(),
             "forget password": () => {
-                if (!isLoggedIn && !isOnDashboard) {
+                if (!isLoggedIn) {
                     this.navigateForgetPassword();
                 } else {
                     this.speak('You are already logged in.');
                 }
             },
             "reset password": () => {
-                if (!isLoggedIn && !isOnDashboard) {
+                if (!isLoggedIn) {
                     this.navigateForgetPassword();
                 } else {
                     this.speak('You are already logged in.');
@@ -509,104 +635,385 @@ private processHandler(input: string): void {
   else if (currentUrl.includes('account/withdraw')) {
     this.processWithdraw(input);
   }
+  else if (currentUrl.includes('account/fund-transfer')) {
+    this.processFundTransfer(input);
+  }
+  else if(currentUrl.includes('account/transaction-history')){
+    this.processTransactionHistory(input);
+  }
 }
 
-
-public processForgetPassword(input: string): void {
+private processTransactionHistory(input: string): void {
   try {
+    console.log(`Processing transaction history: "${input}"`);
+
     if (!input.trim()) {
-      this.speak('I didn’t catch that. Please try again.');
+      this.speak('Input not recognized. Please try again.');
       return;
     }
 
-    switch (this.step) {
-      case 18:
-        this.resetPassword.identifier = input.trim();
-        this.updateInputField('identifier', input.trim());
-        this.resetPasswordForm?.patchValue({ identifier: input.trim() });
-        this.speak(`You entered "${input}". Say "confirm" to proceed with sending the OTP.`);
-        this.step = 19;
-        break;
+    const lowerInput = input.toLowerCase();
 
-      case 19:
-        if (input.trim().toLowerCase() !== 'confirm') {
-          this.speak('To proceed, please say "confirm".');
-          return;
-        }
+    if (lowerInput === 'reset' || lowerInput.includes('clear filter')) {
+      this.transactionHistoryComponent?.resetFilters();
+      this.speak('Transaction filters reset. Showing all transactions.');
+      return;
+    }
 
-        if (!this.resetPasswordComponent) {
-          console.error('ResetPasswordComponent is not initialized.');
-          this.speak('Reset password form is unavailable. Please restart the process.');
-          return;
-        }
-
-        this.speak('Generating your OTP now. Once you receive it, say your PIN.');
-        this.resetPasswordComponent.sendOtp();
-        this.step = 20;
-        break;
-
-      case 20:
-        this.resetPassword.otp = input.trim();
-        this.updateInputField('otp', input.trim());
-        this.resetPasswordForm?.patchValue({
-          identifier: this.loginOtpData.identifier || '',
-          otp: this.resetPassword.otp || '',
-        });
-
-        if (!this.resetPassword.identifier || !this.resetPassword.otp) {
-          this.speak('Both your identifier and OTP are required. Please provide both.');
-          console.error('Both identifier and OTP are required.');
-          return;
-        }
-
-        this.speak(`You entered "${input}". Say "verify" to continue with OTP verification.`);
-        this.step = 21;
-        break;
-
-      case 21:
-        if (input.trim().toLowerCase() !== 'verify') {
-          this.speak('To proceed, please say "verify".');
-          return;
-        }
-
-        if (!this.resetPasswordComponent) {
-          console.error('ResetPasswordComponent is not initialized.');
-          this.speak('Reset password form is unavailable. Please restart the process.');
-          return;
-        }
-
-        this.speak('Verifying your OTP now. Please wait.');
-        this.resetPasswordComponent.verifyOtp();
-        break;
-
-      default:
-        this.speak('Something went wrong. Restarting the reset password process.');
-        console.error('Unknown step:', this.step);
-       
+    if (lowerInput.includes('deposit') || lowerInput.includes('deposits') || 
+        lowerInput.includes('show deposits') || lowerInput.includes('filter deposits')) {
+      this.transactionHistoryComponent?.showDepositTransactionsOnly();
+      this.speak('Showing deposit transactions only.');
+    } 
+    else if (lowerInput.includes('withdrawal') || lowerInput.includes('withdrawals') ||
+             lowerInput.includes('withdraw') || lowerInput.includes('show withdrawals')) {
+      this.transactionHistoryComponent?.showWithdrawalTransactionsOnly();
+      this.speak('Showing withdrawal transactions only.');
+    }
+    else if (lowerInput.includes('transfer') || lowerInput.includes('transfers') ||
+             lowerInput.includes('show transfers') || lowerInput.includes('credited')) {
+      this.transactionHistoryComponent?.showTransferTransactionsOnly();
+      this.speak('Showing transfer transactions only.');
+    }
+    else if (lowerInput.includes('all') || lowerInput.includes('show all') || 
+             lowerInput.includes('reset filters')) {
+      this.transactionHistoryComponent?.resetFilters();
+      this.speak('Showing all transactions.');
+    }
+    else {
+      this.speak('Please specify: deposit, withdrawal, transfer, or all.');
     }
   } catch (error) {
-    console.error('OTP verification failed:', error);
-    this.speak('There was an issue verifying your OTP. Please try again.');
+    console.error('Error processing transaction history:', error);
+    this.speak('An error occurred while filtering transactions.');
   }
 }
 
 
+
+public processFundTransfer(input: string): void {
+  try {
+    console.log(`Processing fund transfer: "${input}", Step: ${this.step}`);
+
+    if (!input.trim()) {
+      this.speak('Input not recognized. Please try again.');
+      return;
+    }
+
+    if (input.toLowerCase() === 'reset') {
+      this.resetProcess('Fund transfer process reset. Please say your transfer amount.', 29);
+      this.resetState();
+      return;
+    }
+
+    if (![29, 30, 31, 32].includes(this.step)) {
+      console.warn(`Invalid step detected: ${this.step}. Resetting to step 29.`);
+      this.step = 29;
+    }
+
+    switch (this.step) {
+      case 29:
+        const amount = this.convertWordsToNumbers(input) || parseFloat(input);
+        if (!isNaN(amount) && amount > 0) {
+          this.fundTransferMoney.amount = amount.toString();
+          this.updateInputField('amount', amount.toString());
+          this.speak(`You said ${amount}. Now, please say the target account number.`);
+          this.step = 30;
+        } else {
+          this.speak('Invalid amount. Please say a valid number.');
+        }
+        break;
+
+      case 30:
+        const accountNumber = input.trim().replace(/\s/g, '');
+        if (!/^\d+$/.test(accountNumber)) {
+          this.speak('Invalid account number format. Please say the numeric account number.');
+          return;
+        }
+
+        this.fundTransferMoney.targetAccountNumber = accountNumber;
+        this.updateInputField('targetAccountNumber', accountNumber);
+        this.speak(`Account number entered as ${accountNumber}. Now, please say your 4-digit PIN.`);
+        this.step = 31;
+        break;
+
+      case 31:
+        const pinInput = input.trim().replace(/\s/g, '');
+        if (!/^\d{4}$/.test(pinInput)) {
+          this.speak('Invalid PIN format. Please say a 4-digit number.');
+          return;
+        }
+
+        if (this.isProcessing) return;
+        this.isProcessing = true;
+
+        this.fundTransferMoney.pin = pinInput;
+        this.updateInputField('pin', pinInput);
+        this.isProcessing = false;
+        this.step = 32;
+        this.speak('PIN entered. Say "confirm" to complete the transfer or "reset" to start over.');
+        break;
+
+      case 32:
+        if (input.toLowerCase() === 'confirm') {
+          if (!this.fundTransferMoney.amount || 
+              !this.fundTransferMoney.pin || 
+              !this.fundTransferMoney.targetAccountNumber) {
+            this.handleError('Amount, account number or PIN is missing. Please try again.', 29);
+            return;
+          }
+
+          if (!this.fundTransferComponent) {
+            this.handleError('Fund transfer component is unavailable. Please restart.', 29);
+            return;
+          }
+
+          if (this.isProcessing) return;
+          this.isProcessing = true;
+
+          // Set up listeners for the transfer result
+          const successSub = this.fundTransferComponent.transferSuccess.subscribe((msg: string) => {
+            this.speak(`Fund transfer successful. ${msg}`);
+            this.isProcessing = false;
+            this.step = 29;
+            successSub.unsubscribe();
+            errorSub.unsubscribe();
+          });
+
+          const errorSub = this.fundTransferComponent.transferError.subscribe((errorMsg: string) => {
+            this.handleError(`Fund transfer failed. ${errorMsg}`, 29);
+            successSub.unsubscribe();
+            errorSub.unsubscribe();
+          });
+
+          this.speak('Processing your fund transfer. Please wait.');
+          this.loader?.show('Processing transfer...');
+
+          // Trigger the transfer
+          this.fundTransferComponent.onSubmit();
+        } else {
+          this.speak('Invalid input. Please say "confirm" to proceed or "reset" to start over.');
+        }
+        break;
+
+      default:
+        this.handleError('Unexpected error. Restarting the fund transfer process.', 29);
+    }
+  } catch (error) {
+    this.handleError('An error occurred during fund transfer processing. Please try again.', 29);
+  }
+}
+
+
+private processForgetPassword(input: string): void {
+  try {
+    if (!input.trim()) {
+      this.speak("I didn't catch that. Please try again.");
+      return;
+    }
+
+    switch (this.step) {
+      case 18: // Initial step - get identifier (email/account number)
+        let formattedInput = input.trim().replace(/\s+/g, '');
+        
+        if (!formattedInput.includes('@')) {
+          formattedInput += '@gmail.com';
+        }
+        
+        this.resetPassword.identifier = formattedInput;
+        
+        // Use updateInputField to maintain consistency with your existing logic
+        this.updateInputField('identifier', formattedInput);
+        
+        // Additionally update the component's form directly if needed
+        if (this.resetPasswordComponent) {
+          this.resetPasswordComponent.resetPasswordForm.patchValue({ identifier: formattedInput });
+        }
+        
+        this.speak(`You said ${formattedInput}. To proceed, please say \"confirm\".`);
+        this.step = 19;
+        break;
+
+      case 19: // Confirmation step for identifier
+        if (input.toLowerCase() === 'go back') {
+          this.speak('Going back to identifier entry. please say you email or account number');
+          this.step = 18;
+          return;
+        }
+        
+        if (input.toLowerCase() !== 'confirm') {
+          this.speak('To proceed, please say "confirm".');
+          return;
+        }
+
+        this.speak('Generating OTP. Please wait.');
+        if (this.resetPasswordComponent) {
+          this.resetPasswordComponent.sendOtp();
+        }
+        this.speak('OTP sent to your email. Now, please say your 6-digit OTP.');
+        this.step = 20;
+        break;
+
+      case 20: // OTP entry step
+        if (input.toLowerCase() === 'resend otp') {
+          this.speak('Resending OTP. Please wait.');
+          if (this.resetPasswordComponent) {
+            this.resetPasswordComponent.sendOtp();
+          }
+          return;
+        }
+
+        if (input.toLowerCase() === 'go back') {
+          this.speak('Going back to identifier confirmation.');
+          this.step = 19;
+          return;
+        }
+
+        const cleanOtp = input.replace(/\D/g, '');
+        if (cleanOtp.length !== 6) {
+          this.speak('Please say a 6-digit OTP code or say "resend OTP" to get a new one.');
+          return;
+        }
+        
+        this.resetPassword.otp = cleanOtp;
+        
+        // Use updateInputField for OTP field
+        this.updateInputField('otp', cleanOtp);
+        
+        // Additionally update the component's OTP handling
+        if (this.resetPasswordComponent) {
+          this.resetPasswordComponent.onOtpChange(cleanOtp);
+        }
+
+        this.speak(`You entered ${cleanOtp.split('').join(' ')}. Say "verify" to continue.`);
+        this.step = 21;
+        break;
+
+      case 21: // OTP verification step
+        if (input.toLowerCase() === 'go back') {
+          this.speak('Going back to OTP entry.');
+          this.step = 20;
+          return;
+        } else if (input.toLowerCase() !== 'verify') {
+          this.speak('To proceed, please say "verify".');
+          return;
+        }
+
+        this.speak('Verifying your OTP now. Please wait.');
+        if (this.resetPasswordComponent) {
+          this.resetPasswordComponent.verifyOtp();
+        }
+        
+        // After verification, move to password setup
+        this.speak('OTP verified. Now please say your new password.');
+        this.step = 22;
+        break;
+
+      case 22: // New password entry step
+        if (input.toLowerCase() === 'go back') {
+          this.speak('Going back to OTP verification.');
+          this.step = 21;
+          return;
+        }
+
+        if (input.length < 8) {
+          this.speak('Password must be at least 8 characters. Please try again.');
+          return;
+        }
+
+        this.resetPassword.newPassword = input;
+        
+        // Update both the form and the component's form
+        if (this.newPasswordForm) {
+          this.newPasswordForm.patchValue({ newPassword: input });
+        }
+        if (this.resetPasswordComponent) {
+          this.resetPasswordComponent.newPasswordForm.patchValue({ newPassword: input });
+        }
+        
+        this.speak('Password received. Please say your password again to confirm.');
+        this.step = 23;
+        break;
+
+      case 23: // Confirm password step
+        if (input.toLowerCase() === 'go back') {
+          this.speak('Going back to new password entry.');
+          this.step = 22;
+          return;
+        }
+
+        this.resetPassword.confirmPassword = input;
+        
+        // Update both the form and the component's form
+        if (this.newPasswordForm) {
+          this.newPasswordForm.patchValue({ confirmPassword: input });
+        }
+        if (this.resetPasswordComponent) {
+          this.resetPasswordComponent.newPasswordForm.patchValue({ confirmPassword: input });
+        }
+
+        if (this.resetPassword.newPassword !== this.resetPassword.confirmPassword) {
+          this.speak('Passwords do not match. Please say your new password again.');
+          this.step = 22;
+          return;
+        }
+
+        this.speak('Passwords match. Say "submit" to reset your password.');
+        this.step = 24;
+        break;
+
+      case 24: // Final submission step
+        if (input.toLowerCase() === 'go back') {
+          this.speak('Going back to password confirmation.');
+          this.step = 23;
+          return;
+        }
+        
+        if (input.toLowerCase() !== 'submit') {
+          this.speak('To reset your password, please say "submit".');
+          return;
+        }
+
+        this.speak('Resetting your password now. Please wait.');
+        if (this.resetPasswordComponent) {
+          this.resetPasswordComponent.resetPassword();
+        }
+        break;
+
+      default:
+        this.speak('Something went wrong. Restarting the password reset process.');
+        this.resetState();
+        this.step = 18;
+    }
+  } catch (error) {
+    console.error('Password reset process failed:', error);
+    this.speak('There was an issue with the password reset process. Please try again.');
+    this.resetState();
+    this.step = 18;
+  }
+}
+
 private processLoginWithOtp(input: string): void {
   try {
     if (!input.trim()) {
-      this.speak('I didn’t catch that. Please try again.');
+      this.speak("I didn't catch that. Please try again.");
       return;
     }
-if (input==='reset'){
-  this.resetState();
-  return;
-}
+
     switch (this.step) {
-      case 14:
-        this.loginOtpData.identifier = input.trim();
-        this.updateInputField('identifier', input);
-        this.otpForm?.patchValue({ identifier: input.trim() });
-        this.speak(`You entered "${input}". Say "confirm" to proceed with sending the OTP.`);
+      case 14: 
+        let formattedInput = input.trim().replace(/\s+/g, '');
+        
+        // Check if input is a valid account number (assumed to be numeric and at least 8 digits)
+        const isAccountNumber = /^[0-9]{8,}$/.test(formattedInput);
+        
+        if (!isAccountNumber && !formattedInput.includes('@')) {
+          formattedInput += '@gmail.com';
+        }
+        
+        this.loginOtpData.identifier = formattedInput;
+        this.updateInputField('identifier', formattedInput);
+        this.speak(`You said ${formattedInput}. To proceed, please say \"confirm\".`);
         this.step = 15;
         break;
 
@@ -616,68 +1023,61 @@ if (input==='reset'){
           return;
         }
 
-        if (!this.otpComponent) {
-          console.error(' OTP component is not initialized.');
-          this.speak('OTP form is unavailable. Please restart the OTP process.');
-          return;
-        }
-
-        this.speak('Generating your OTP now. Once you receive it, say your PIN.');
-        this.otpComponent.generateOTP();
+        this.speak('Generating OTP. Please wait.');
+        this.otpComponent?.generateOTP();
+        this.speak('OTP sent to the email. Now, please say your 6-digit OTP or say "resend OTP" to get a new one.');
         this.step = 16;
         break;
 
       case 16:
-        this.loginOtpData.otp = input.trim();
-
-        if (this.otpComponent && this.otpComponent.ngOtpInput) {
-          this.otpComponent.ngOtpInput.setValue(this.loginOtpData.otp);
-        }
-
-        this.updateInputField('otp', input);
-        this.otpForm?.patchValue({
-          identifier: this.loginOtpData.identifier || '',
-          otp: this.loginOtpData.otp || ''
-        });
-
-        if (!this.loginOtpData.identifier || !this.loginOtpData.otp) {
-          this.speak('Both your identifier and OTP are required. Please provide both.');
-          console.error(' Both identifier and OTP are required.');
+        const cleanOtp = input.replace(/\D/g, '');
+        if (cleanOtp.length !== 6) {
+          this.speak('Please say a 6-digit OTP code, or say "new OTP" to generate one.');
           return;
         }
+        
+        this.loginOtpData.otp = cleanOtp;
+        this.otpForm?.patchValue({
+          identifier: this.loginOtpData.identifier,
+          otp: this.loginOtpData.otp
+        });
 
-        this.speak(`You entered "${input}". Say "verify" to continue with login.`);
+        if (this.otpComponent && this.loginOtpData.otp) {
+          this.otpComponent.setOtpValue(this.loginOtpData.otp);
+        }
+
+        this.speak(`You entered ${cleanOtp.split('').join(' ')}. Say "verify" to continue.`);
         this.step = 17;
         break;
 
       case 17:
-        if (input.toLowerCase() !== 'verify') {
+        if (input.toLowerCase() === 'go back') {
+          this.speak('Going back to OTP entry. Please provide your OTP again.');
+          this.step = 16;
+          return;
+        } else if (input.toLowerCase() !== 'verify') {
           this.speak('To proceed, please say "verify".');
           return;
         }
 
-        if (!this.otpComponent) {
-          console.error(' OTP component is not initialized.');
-          this.speak('OTP form is unavailable. Please restart the login process.');
+        if (!this.otpComponent?.componentInitialized) {
+          this.speak('Please wait while we prepare the verification. Try again in a moment.');
           return;
         }
 
         this.speak('Verifying your OTP now. Please wait.');
         this.otpComponent.verifyOTP();
-        this.resetState();
         break;
 
       default:
         this.speak('Something went wrong. Restarting the login process.');
-        console.error(' Unknown step:', this.step);
         this.resetState();
     }
   } catch (error) {
-    console.error(' OTP verification failed:', error);
+    console.error('OTP verification failed:', error);
     this.speak('There was an issue verifying your OTP. Please try again.');
   }
 }
-
 
 private processLogin(input: string):void {
   try {
@@ -695,9 +1095,18 @@ private processLogin(input: string):void {
 
     switch (this.step) {
       case 1:
-        this.loginData.identifier = input.trim();
-        this.updateInputField('identifier', input);
-        this.speak(`You said ${input}. Now, please say your password.`);
+
+      let formattedInput = input.trim().replace(/\s+/g, '');
+        
+        // Check if input is a valid account number (assumed to be numeric and at least 8 digits)
+        const isAccountNumber = /^[0-9]{8,}$/.test(formattedInput);
+        
+        if (!isAccountNumber && !formattedInput.includes('@')) {
+          formattedInput += '@gmail.com';
+        }
+        this.loginData.identifier = formattedInput.trim();
+        this.updateInputField('identifier', formattedInput);
+        this.speak(`You said ${formattedInput}. Now, please say your password.`);
         this.step = 2;
         this.updateForm(this.loginForm, {
           identifier: this.loginData.identifier,
@@ -752,7 +1161,6 @@ private processLogin(input: string):void {
     this.speak('An error occurred during login. Please try again.');
   }
 }
-
 
 private processRegister(input: string): void {
   try {
@@ -849,7 +1257,6 @@ private processRegister(input: string): void {
   }
 }
 
-
 private processPin(input: string): void {
   try {
     if (!input.trim()) {
@@ -895,7 +1302,17 @@ private processPin(input: string): void {
         }
 
         this.pinChangeComponent.onSubmitGeneratePIN();
-        this.speak('Processing PIN creation. Please wait.');
+        this.speak('Processing PIN creation. Say "confirm" to finalize or "reset" to start over.');
+        this.step = 14; // New confirmation step
+        break;
+
+      case 14:
+        if (input.toLowerCase() === 'confirm') {
+          this.speak('Your new PIN has been successfully set.');
+          this.resetState();
+        } else {
+          this.speak('Awaiting confirmation. Say "confirm" to proceed or "reset" to restart.');
+        }
         break;
 
       default:
@@ -908,7 +1325,6 @@ private processPin(input: string): void {
     this.speak('An error occurred during PIN creation. Please try again.');
   }
 }
-
 
 public processDeposit(input: string): void {
   try {
@@ -943,7 +1359,7 @@ public processDeposit(input: string): void {
         break;
 
       case 23:
-        if (!/^\d{4}$/.test(input.trim())) {
+        if (!/^\d{4}$/.test(input.trim().replace(/\s+/g, ''))) {
           this.speak('Invalid PIN format. Please say a 4-digit number.');
           return;
         }
@@ -952,7 +1368,7 @@ public processDeposit(input: string): void {
         this.isProcessing = true;
 
         this.depositMoney.pin = input.trim();
-        this.updateInputField('pin', input.trim()); // ✅ Now PIN updates the input field
+        this.updateInputField('pin', input.trim()); 
 
         this.isProcessing = false;
         this.step = 24;
@@ -1000,7 +1416,6 @@ public processDeposit(input: string): void {
   }
 }
 
-
 public processWithdraw(input: string): void {
   try {
     console.log(`processWithdraw called with input: "${input}", Step: ${this.step}`);
@@ -1034,7 +1449,7 @@ public processWithdraw(input: string): void {
         break;
 
       case 27:
-        if (!/^\d{4}$/.test(input.trim())) {
+        if (!/^\d{4}$/.test(input.trim().replace(/\s/g, '') || '')) {
           this.speak('Invalid PIN format. Please say a 4-digit number.');
           return;
         }
@@ -1042,8 +1457,8 @@ public processWithdraw(input: string): void {
         if (this.isProcessing) return;
         this.isProcessing = true;
 
-        this.withdrawMoney.pin = input.trim();
-        this.updateInputField('pin', input.trim()); // ✅ Now PIN updates the input field
+        this.withdrawMoney.pin = input.trim().replace(/\s/g, '');
+        this.updateInputField('pin', input.trim().replace(/\s/g, '') || '');
 
         this.isProcessing = false;
         this.step = 28;
@@ -1090,8 +1505,6 @@ public processWithdraw(input: string): void {
     this.handleError('An error occurred during withdrawal processing. Please try again.', 26);
   }
 }
-
-
 
 private handleError(message: string, step: number): void {
   console.error(message);
@@ -1147,7 +1560,6 @@ private convertWordsToNumbers(input: string): number | null {
 }
 
 
-
 // Method to set the depositForm
 setDepositForm(form: FormGroup): void {
   this.depositForm = form;
@@ -1158,59 +1570,78 @@ setWithdrawForm(form: FormGroup): void {
   console.log('withdraw form set in VoiceService:', this.withdrawForm);
 }
 
+setFundTransferForm(form: FormGroup): void {
+  this.fundTransferForm = form;
+  console.log('FundTransferForm form set in VoiceService:', this.fundTransferForm);
+}
+
+setOtpComponent(otpComponent: OtpComponent): void {
+  this.otpComponent = otpComponent;
+  console.log('OTP component set in VoiceService');
+  
+  // If we already have OTP data, set it when component is ready
+  if (this.loginOtpData.otp) {
+    setTimeout(() => {
+      otpComponent.setOtpValue(this.loginOtpData.otp);
+    }, 100);
+  }
+}
+
+
+
 private updateInputField(fieldName: string, value: string): void {
   try {
+    if (!fieldName || value === undefined || value === null) {
+      console.warn('Invalid field name or value provided.');
+      this.speak('Invalid input. Please provide a valid field and value.');
+      return;
+    }
+
     const trimmedValue = value.trim();
-    console.log(`Attempting to update field "${fieldName}" with value: ${trimmedValue}`);
+    console.log(`Updating field "${fieldName}" with value: ${trimmedValue}`);
 
-    // Prioritize updating the depositForm if it exists and has the field
-    if (this.depositForm && this.depositForm.get(fieldName)) {
-      this.depositForm.get(fieldName)?.setValue(trimmedValue);
-      console.log(`Updated field "${fieldName}" in Deposit Form with value: ${trimmedValue}`);
-      return;
-    }
-
-    if (this.withdrawForm && this.withdrawForm.get(fieldName)) {
-      this.withdrawForm.get(fieldName)?.setValue(trimmedValue);
-      console.log(`Updated field "${fieldName}" in withdraw Form with value: ${trimmedValue}`);
-      return;
-    }
-
-
-    // Fallback to other forms if depositForm is not available or doesn't have the field
-    const forms = [
+    const possibleForms = [
+      { form: this.resetPasswordComponent?.resetPasswordForm, name: 'Component Reset Password Form' },
+      { form: this.resetPasswordComponent?.newPasswordForm, name: 'Component New Password Form' },
       { form: this.resetPasswordForm, name: 'Reset Password Form' },
+      { form: this.newPasswordForm, name: 'New Password Form' },
+      { form: this.depositForm, name: 'Deposit Form' },
+      { form: this.withdrawForm, name: 'Withdraw Form' },
+      { form: this.fundTransferForm, name: 'fundTransfer Form' },
       { form: this.registerForm, name: 'Register Form' },
       { form: this.loginForm, name: 'Login Form' },
       { form: this.otpForm, name: 'OTP Form' },
-      { form: this.pinChangeForm, name: 'PIN Change Form' },
-      { form: this.depositForm, name: 'Deposit Form' },
-      { form: this.withdrawForm, name: 'withdraw Form' },
+      { form: this.pinChangeForm, name: 'PIN Change Form' }
     ];
 
-    let fieldUpdated = false;
-    for (const formData of forms) {
-      if (formData.form && formData.form.get(fieldName)) {
-        formData.form.get(fieldName)?.setValue(trimmedValue);
-        console.log(`Updated field "${fieldName}" in ${formData.name} with value: ${trimmedValue}`);
-        fieldUpdated = true;
-        break;
+    // Debugging: Print all available fields in each form
+    for (const { form, name } of possibleForms) {
+      if (form) {
+        console.log(`Available fields in ${name}:`, Object.keys(form.controls));
       }
     }
 
-    if (!fieldUpdated) {
-      console.warn(`Field "${fieldName}" not found in any form.`);
-      this.speak(`Field "${fieldName}" not found. Please try again.`);
+    for (const { form, name } of possibleForms) {
+      if (form?.get(fieldName)) {
+        form.get(fieldName)?.setValue(trimmedValue);
+        console.log(`Successfully updated "${fieldName}" in ${name}`);
+        return;
+      }
     }
+
+    console.warn(`Field "${fieldName}" not found in any form.`);
+    this.speak(`Field "${fieldName}" not found. Please try again.`);
   } catch (error) {
     console.error(`Error updating field "${fieldName}":`, error);
-    this.speak('An error occurred while updating form fields.');
+    this.speak('An error occurred while updating the form field.');
   }
 }
+
+
 private updateForm(form?: FormGroup, data?: any): void {
   if (form && data) {
     try {
-      form.setValue(data);
+      form.patchValue(data);
       console.log('Form updated with data:', data);
     } catch (error) {
       console.error('Error updating form:', error);
@@ -1225,25 +1656,46 @@ private updateForm(form?: FormGroup, data?: any): void {
 
 
 speak(message: string): void {
-  console.log("Attempting to speak:", message);
-
-  if (window.speechSynthesis.speaking) {
-    console.warn("Speech already running. Cancelling and delaying restart...");
-    window.speechSynthesis.cancel();
-
-    setTimeout(() => {
-      this.tts.speak(message);
-    }, 500);  // Add a delay before restarting speech
-
-    return;
-  }
-
   try {
     this.tts.speak(message);
   } catch (error) {
-    console.error("Error in text-to-speech:", error);
+    console.error(' Error in text-to-speech:', error);
   }
 }
+
+//  async speak(message: string): Promise<void> {
+//   return new Promise((resolve) => {
+//     try {
+//       if (window.speechSynthesis) {
+//         window.speechSynthesis.cancel();
+        
+//         const utterance = new SpeechSynthesisUtterance(message);
+//         utterance.onend = () => resolve();
+//         utterance.onerror = () => resolve();
+        
+//         // Get the preferred voice
+//         const voices = window.speechSynthesis.getVoices();
+//         const preferredVoice = voices.find(v => v.name.includes('Google UK English Male')) || 
+//                              voices.find(v => v.lang === 'en-GB') || 
+//                              voices[0];
+        
+//         if (preferredVoice) {
+//           utterance.voice = preferredVoice;
+//           utterance.lang = preferredVoice.lang;
+//         }
+
+//         window.speechSynthesis.speak(utterance);
+//       } else {
+//         resolve();
+//       }
+//     } catch (error) {
+//       console.error('Speech error:', error);
+//       resolve();
+//     }
+//   });
+// }
+
+
 
 
 

@@ -1,9 +1,11 @@
+<!-- voice-assistant.component.html -->
 <div *ngIf="isAssistantVisible" class="voice-assistant-ui">
   <div class="mic-container">
-    <div class="mic-icon">🎤</div>
+    <div id="mic-icon" class="mic-icon">🎤</div>
     <div class="mic-glow"></div>
   </div>
   <p class="listening-text">Listening...</p>
 </div>
 
-<p class="debug-text">Debug: isAssistantVisible = {{ isAssistantVisible }}</p>
+<!-- Optional debug display -->
+<p *ngIf="false" class="debug-text">Debug: isAssistantVisible = {{ isAssistantVisible }}</p>

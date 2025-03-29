@@ -1,8 +1,8 @@
 import { ToastService } from 'angular-toastify';
 import { ApiService } from 'src/app/services/api.service';
 import { LoadermodelService } from 'src/app/services/loadermodel.service';
-
-import { Component, OnInit } from '@angular/core';
+import { VoiceService } from 'src/app/services/voice.service';
+import { Component, OnInit, Output, EventEmitter } from '@angular/core';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
 
@@ -13,28 +13,33 @@ import { Router } from '@angular/router';
 })
 export class FundTransferComponent implements OnInit {
   fundTransferForm!: FormGroup;
+  @Output() transferSuccess = new EventEmitter<string>();
+  @Output() transferError = new EventEmitter<string>();
 
   constructor(
     private fb: FormBuilder,
     private apiService: ApiService,
     private _toastService: ToastService,
     private router: Router,
-    private loader: LoadermodelService // Inject the LoaderService here
+    private loader: LoadermodelService,
+    private voiceService: VoiceService
   ) {}
 
   ngOnInit(): void {
     this.initFundTransferForm();
+    this.voiceService.setFundTransfer(this);
   }
 
   initFundTransferForm(): void {
     this.fundTransferForm = this.fb.group({
-      amount: ['', [Validators.required, Validators.min(0)]], // Validate that amount is a positive number
+      amount: ['', [Validators.required, Validators.min(0)]],
       pin: [
         '',
         [Validators.required, Validators.minLength(4), Validators.maxLength(4)],
       ],
       targetAccountNumber: ['', [Validators.required]],
     });
+    this.voiceService.setFundTransferForm(this.fundTransferForm); 
   }
 
   onSubmit(): void {
@@ -46,22 +51,22 @@ export class FundTransferComponent implements OnInit {
       )?.value;
 
       if (amount !== null && pin !== null && targetAccountNumber !== null) {
-        this.loader.show('Transferring funds...'); // Show the loader before making the API call
+        this.loader.show('Transferring funds...');
         this.apiService
           .fundTransfer(amount, pin, targetAccountNumber)
           .subscribe({
             next: (response: any) => {
-              this.loader.hide(); // Hide the loader on successful fund transfer
-              // Handle successful fund transfer if needed
+              this.loader.hide();
               this.fundTransferForm.reset();
               this._toastService.success(response.msg);
+              this.transferSuccess.emit(response.msg);
               this.router.navigate(['/dashboard']);
               console.log('Fund transfer successful!', response);
             },
             error: (error: any) => {
-              this.loader.hide(); // Hide the loader on fund transfer request failure
-              // Handle error if the fund transfer request fails
+              this.loader.hide();
               this._toastService.error(error.error);
+              this.transferError.emit(error.error);
               console.error('Fund transfer failed:', error);
             },
           });

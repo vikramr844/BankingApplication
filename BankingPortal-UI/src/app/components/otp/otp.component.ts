@@ -1,6 +1,6 @@
-import { Component, ViewChild, OnInit } from '@angular/core';
+import { Component, ViewChild, OnInit, OnDestroy, AfterViewInit } from '@angular/core';
 import { Router } from '@angular/router';
-import { FormBuilder, FormGroup } from '@angular/forms';
+import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { ToastService } from 'angular-toastify';
 import { finalize } from 'rxjs';
 import { AuthService } from 'src/app/services/auth.service';
@@ -13,12 +13,15 @@ import { environment } from 'src/environment/environment';
   templateUrl: './otp.component.html',
   styleUrls: ['./otp.component.css'],
 })
-export class OtpComponent implements OnInit {
+export class OtpComponent implements OnInit, OnDestroy, AfterViewInit {
   identifier: string = '';
   otp: string = '';
   otpGenerated: boolean = false;
   authTokenName = environment.tokenName;
   otpForm: FormGroup;
+  resendDisabled: boolean = false;
+  resendCountdown: number = 0;
+  componentInitialized = false;
 
   @ViewChild('ngOtpInput', { static: false }) ngOtpInput: any;
 
@@ -40,22 +43,10 @@ export class OtpComponent implements OnInit {
     private formBuilder: FormBuilder,
     private voiceService: VoiceService
   ) {
-    // Initialize the OTP form
     this.otpForm = this.formBuilder.group({
-      identifier: [''],
-      otp: [''],
+      identifier: ['', [Validators.required, Validators.minLength(3)]],
+      otp: ['', [Validators.required, Validators.minLength(6), Validators.maxLength(6)]],
     });
-
-    // Initialize voice commands
-    this.voiceService.initializeVoiceCommands(
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      this.otpForm,
-    );
   }
 
   ngOnInit(): void {
@@ -65,6 +56,60 @@ export class OtpComponent implements OnInit {
       this.otpGenerated = true;
       this.otpForm.patchValue({ identifier: this.identifier });
     }
+
+    setTimeout(() => {
+      this.voiceService.initializeVoiceCommands(
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        this.otpForm,
+        this
+      );
+      this.componentInitialized = true;
+    }, 300);
+  }
+
+  ngAfterViewInit() {
+    this.voiceService.setOtpComponent(this);
+  }
+
+  ngOnDestroy(): void {
+    this.voiceService.resetState();
+  }
+
+  setOtpValue(value: string): void {
+    if (!value || typeof value !== 'string') {
+      console.error('Invalid OTP value:', value);
+      return;
+    }
+
+    // Clean the input to only include digits
+    const cleanValue = value.replace(/\D/g, '');
+    
+    if (cleanValue.length !== 6) {
+      console.error('OTP must be 6 digits');
+      return;
+    }
+
+    if (this.ngOtpInput) {
+      this.ngOtpInput.setValue(cleanValue);
+      this.onOtpChange(cleanValue);
+      console.log('OTP value set:', cleanValue);
+      
+      // Provide visual feedback
+      this.highlightOtpInputs();
+    }
+  }
+
+  private highlightOtpInputs(): void {
+    const inputs = document.querySelectorAll('.otp-input');
+    inputs.forEach(input => {
+      input.classList.add('highlight');
+      setTimeout(() => input.classList.remove('highlight'), 1000);
+    });
   }
 
   onOtpChange(otp: string): void {
@@ -74,27 +119,30 @@ export class OtpComponent implements OnInit {
 
   setVal(val: string): void {
     this.ngOtpInput.setValue(val);
+    this.onOtpChange(val);
   }
 
   formatIdentifier(identifier: string): string { 
     identifier = identifier.trim().replace(/\s+/g, '');
-
-    if (!identifier.includes('@') && !/^\d+$/.test(identifier)) {
+  
+    // Check if the identifier is purely numeric (assuming an account number)
+    if (!identifier.includes('@') && !/^[0-9]+$/.test(identifier)) {
         return identifier + '@gmail.com';
     }
-
+  
     return identifier;
-}
-
+  }
+  
 
   generateOTP(): void {
-    this.identifier = this.otpForm.get('identifier')?.value?.trim();
-    if (!this.identifier) {
+    const identifierControl = this.otpForm.get('identifier');
+  
+    if (!identifierControl?.value || identifierControl.invalid) {
       this.toastService.error('Please enter a valid identifier.');
       return;
     }
   
-    this.identifier = this.formatIdentifier(this.identifier);
+    this.identifier = this.formatIdentifier(identifierControl.value);
     this.otpForm.patchValue({ identifier: this.identifier });
   
     this.loader.show('Generating OTP...');
@@ -104,20 +152,22 @@ export class OtpComponent implements OnInit {
       .subscribe({
         next: (response: any) => {
           this.toastService.success(response.message + ', Check Email');
+       
           this.otpGenerated = true;
           sessionStorage.setItem('accountNumber', this.identifier);
           sessionStorage.setItem('otpTimestamp', Date.now().toString());
+          this.startResendCountdown();
         },
         error: (error: any) => {
-          
-            const errorMessage = error.error || 'Failed to generate OTP.';
-            this.toastService.error(errorMessage);
-            this.voiceService.speak(errorMessage); 
-            console.error(error);
-          },
+          const errorMessage = error.error?.message || error.message || 'Failed to generate OTP.';
+          this.toastService.error(errorMessage);
+          this.voiceService.speak("Email id dose not exist. try again"); 
+          console.error('Generate OTP Error:', error);
+        },
       });
   }
   
+
   verifyOTP(): void {
     this.identifier = this.formatIdentifier(this.identifier);
 
@@ -129,12 +179,11 @@ export class OtpComponent implements OnInit {
     }
 
     if (!this.identifier || !this.otp || this.otp.length !== 6) {
-      const errorMessage = 'Please enter both email and OTP.';
+      const errorMessage = 'Please enter a valid 6-digit OTP.';
       this.toastService.error(errorMessage);
       this.voiceService.speak(errorMessage);
       return;
     }
-    
 
     this.loader.show('Verifying OTP...');
     const otpVerificationRequest = {
@@ -147,19 +196,53 @@ export class OtpComponent implements OnInit {
       .pipe(finalize(() => this.loader.hide()))
       .subscribe({
         next: (response: any) => {
-          console.log(response);
           this.toastService.success('Account Logged In');
           localStorage.setItem(this.authTokenName, response.token);
           sessionStorage.removeItem('otpTimestamp');
           this.router.navigate(['/dashboard']);
         },
         error: (error: any) => {
-          const errorMessage = error.error || 'OTP verification failed. Please try again.';
+          const errorMessage = error.error?.message || error.message || 'OTP verification failed. Please try again.';
           this.toastService.error(errorMessage);
-          this.voiceService.speak(errorMessage); // Speak out the error
-          console.error(' OTP Verification Error:', error);
+          this.voiceService.speak(errorMessage);
+          console.error('OTP Verification Error:', error);
         },
-        
       });
+  }
+
+  resendOTP(): void {
+    if (this.resendDisabled) {
+      this.toastService.info(`Please wait ${this.resendCountdown} seconds before resending.`);
+      return;
+    }
+
+    this.loader.show('Resending OTP...');
+    this.authService
+      .generateOTP(this.identifier)
+      .pipe(finalize(() => this.loader.hide()))
+      .subscribe({
+        next: (response: any) => {
+          this.toastService.success('New OTP sent successfully');
+          sessionStorage.setItem('otpTimestamp', Date.now().toString());
+          this.startResendCountdown();
+        },
+        error: (error: any) => {
+          const errorMessage = error.error?.message || error.message || 'Failed to resend OTP.';
+          this.toastService.error(errorMessage);
+          console.error('Resend OTP Error:', error);
+        },
+      });
+  }
+
+  private startResendCountdown(): void {
+    this.resendDisabled = true;
+    this.resendCountdown = 30;
+    const countdownInterval = setInterval(() => {
+      this.resendCountdown--;
+      if (this.resendCountdown <= 0) {
+        clearInterval(countdownInterval);
+        this.resendDisabled = false;
+      }
+    }, 1000);
   }
 }

@@ -1,12 +1,14 @@
 package com.webapp.bankingportal.service;
 
 import java.sql.Timestamp;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 import com.webapp.bankingportal.dto.*;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -56,15 +58,47 @@ public class UserServiceImpl implements UserService {
         return ResponseEntity.ok(JsonUtil.toJson(new UserResponse(savedUser)));
     }
 
+//    @Override
+//    public ResponseEntity<String> login(LoginRequest loginRequest, HttpServletRequest request)
+//            throws InvalidTokenException {
+//        val user = authenticateUser(loginRequest);
+//
+//        sendLoginNotification(user, request.getRemoteAddr());
+//        val token = generateAndSaveToken(user.getAccount().getAccountNumber());
+//        return ResponseEntity.ok(String.format(ApiMessages.TOKEN_ISSUED_SUCCESS.getMessage(), token));
+//    }
+
+
     @Override
     public ResponseEntity<String> login(LoginRequest loginRequest, HttpServletRequest request)
             throws InvalidTokenException {
-        val user = authenticateUser(loginRequest);
+        try {
+            val user = authenticateUser(loginRequest); // Authenticate user
 
-        sendLoginNotification(user, request.getRemoteAddr());
-        val token = generateAndSaveToken(user.getAccount().getAccountNumber());
-        return ResponseEntity.ok(String.format(ApiMessages.TOKEN_ISSUED_SUCCESS.getMessage(), token));
+            sendLoginNotification(user, request.getRemoteAddr()); // Send success login notification
+            val token = generateAndSaveToken(user.getAccount().getAccountNumber());
+            return ResponseEntity.ok(String.format(ApiMessages.TOKEN_ISSUED_SUCCESS.getMessage(), token));
+        } catch (AuthenticationException e) {
+            // If authentication fails, send an email notification for failed login
+//            loginFail(loginRequest.getEmail(), request);
+            throw new InvalidTokenException("Invalid username or password");
+        }
     }
+//
+//    // Failed login notification method
+//    private void loginFail(String username, HttpServletRequest request) {
+//        Optional<User> userOptional = userRepository.findByEmail(username);
+//
+//        if (userOptional.isPresent()) {
+//            User user = userOptional.get();
+//            emailService.getFailedLoginNotification(user.getName(),user.getEmail(), request.getRemoteAddr());
+//        }
+//    }
+
+
+
+
+
 
 
 

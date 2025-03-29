@@ -44,7 +44,7 @@ export class RegisterComponent implements OnInit {
       faceImage: new FormControl(''),
     });
 
-    console.log('✅ Register Form Initialized:', this.registerForm);
+    console.log(' Register Form Initialized:', this.registerForm);
 
     this.voiceService.initializeVoiceCommands(
       undefined,
@@ -104,6 +104,8 @@ export class RegisterComponent implements OnInit {
       error: (error: any) => {
         console.error('Registration failed:', error);
         const errorMessage = error.error?.message || 'Registration failed. Please try again.';
+        this._toastService.error('Email already exists. Please use a different email.');
+        this.voiceService.speak("'Email already exists. Please use a different email.'")
         if (errorMessage.includes('already exists')) {
           this._toastService.error('Email already exists. Please use a different email.');
         } else {

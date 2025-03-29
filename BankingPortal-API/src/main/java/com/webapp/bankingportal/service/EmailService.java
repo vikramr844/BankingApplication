@@ -2,6 +2,9 @@ package com.webapp.bankingportal.service;
 
 import java.util.concurrent.CompletableFuture;
 
+import com.webapp.bankingportal.entity.User;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotEmpty;
 import org.springframework.scheduling.annotation.Async;
 
 public interface EmailService {
@@ -12,4 +15,6 @@ public interface EmailService {
     public String getLoginEmailTemplate(String name, String loginTime, String loginLocation);
 
     public String getOtpLoginEmailTemplate(String name, String accountNumber, String otp);
+
+//    void getFailedLoginNotification(String name, String loginTime, String loginLocation);
 }

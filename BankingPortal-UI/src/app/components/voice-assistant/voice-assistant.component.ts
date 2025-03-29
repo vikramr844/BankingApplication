@@ -7,25 +7,30 @@ import { Component, ChangeDetectorRef } from '@angular/core';
   styleUrls: ['./voice-assistant.component.css']
 })
 export class VoiceAssistantComponent {
-  isAssistantVisible: boolean = true;
+  isAssistantVisible: boolean = false; // Start hidden by default
 
   constructor(private cdr: ChangeDetectorRef) {}
 
   showAssistant() {
-    console.log('showAssistant() called'); // Debugging
+    console.log('showAssistant() called');
     this.isAssistantVisible = true;
-    this.cdr.detectChanges(); // Force change detection
+    this.cdr.detectChanges();
   }
 
   hideAssistant() {
-    this.isAssistantVisible = true;
-    this.cdr.detectChanges(); // Force change detection
+    this.isAssistantVisible = false;
+    this.cdr.detectChanges();
   }
+
+  toggleAssistant() {
+    this.isAssistantVisible = !this.isAssistantVisible;
+    this.cdr.detectChanges();
+  }
+
   showMicIndicator(): void {
     const micElement = document.getElementById('mic-icon');
     if (micElement) {
-        micElement.style.display = 'block'; // Show mic icon
+      micElement.style.display = 'block';
     }
-}
-
+  }
 }

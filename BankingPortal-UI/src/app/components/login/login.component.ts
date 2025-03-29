@@ -40,46 +40,44 @@ export class LoginComponent implements OnInit {
     this.voiceService.initializeVoiceCommands(this.loginForm, this);
   }
 
-  
   onSubmit(): void {
     if (this.loginForm.valid) {
-        let { identifier, password } = this.loginForm.value;
+      let { identifier, password } = this.loginForm.value;
 
-        identifier = identifier.trim();
-        password = password.trim();
+      identifier = identifier.trim().replace(/\s+/g, '');
+      password = password.trim();
 
-        if (!identifier.includes('@') && !/^\d+$/.test(identifier)) {
-            identifier += '@gmail.com';
-        }
+      // Check if input is a valid account number (assumed to be numeric and at least 8 digits)
+      const isAccountNumber = /^[0-9]{8,}$/.test(identifier);
+      
+      if (!isAccountNumber && !identifier.includes('@')) {
+        identifier += '@gmail.com';
+      }
 
-        this.loader.show('Logging in...');
+      this.loader.show('Logging in...');
 
-        this.authService.login(identifier, password).subscribe({
-            next: (response: any) => {
-                const token = response.token;
-                localStorage.setItem(this.authTokenName, token);
-                this.loader.hide();
-                this.router.navigate(['/dashboard']);
-            },
-            error: (error: any) => {
-                const errorMessage = error.error || 'Login failed. Please try again.';
-
-                this._toastService.error(errorMessage);
-                this.voiceService.speak(errorMessage);
-
-                console.error('Login error:', error);
-                this.loader.hide();
-            },
-        });
+      this.authService.login(identifier, password).subscribe({
+        next: (response: any) => {
+          const token = response.token;
+          localStorage.setItem(this.authTokenName, token);
+          this.loader.hide();
+          this.router.navigate(['/dashboard']);
+        },
+        error: (error: any) => {
+          const errorMessage = error.error || 'Login failed. Please try again.';
+          this._toastService.error(errorMessage);
+          this.voiceService.speak(errorMessage);
+          console.error('Login error:', error);
+          this.loader.hide();
+        },
+      });
     } else {
-        const validationMessage = 'Please enter both email and password.';
-        this._toastService.error(validationMessage);
-        this.voiceService.speak(validationMessage);
+      const validationMessage = 'Please enter both email and password.';
+      this._toastService.error(validationMessage);
+      this.voiceService.speak(validationMessage);
     }
-}
+  }
 
-  
-  
   togglePasswordVisibility(): void {
     this.showPassword = !this.showPassword;
   }
